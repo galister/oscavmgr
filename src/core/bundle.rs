@@ -5,6 +5,7 @@ use super::{INPUT_PREFIX, PARAM_PREFIX};
 pub trait AvatarBundle {
     fn new_bundle() -> Self;
     fn send_parameter(&mut self, name: &str, value: OscType);
+    fn send_tracking(&mut self, addr: &str, args: Vec<OscType>);
     fn send_input_axis(&mut self, name: &str, value: f32);
     fn send_input_button(&mut self, name: &str, value: bool);
     fn send_chatbox_message(&mut self, message: String, open_keyboard: bool, play_sound: bool);
@@ -22,6 +23,12 @@ impl AvatarBundle for OscBundle {
         self.content.push(OscPacket::Message(OscMessage {
             addr: format!("{}{}", PARAM_PREFIX, name),
             args: vec![value],
+        }));
+    }
+    fn send_tracking(&mut self, addr:&str, args: Vec<OscType>) {
+        self.content.push(OscPacket::Message(OscMessage {
+            addr: addr.to_string(),
+            args,
         }));
     }
     fn send_input_axis(&mut self, name: &str, value: f32) {

@@ -7,10 +7,11 @@ use std::{
     sync::Arc,
 };
 
-use self::{ext_autopilot::autopilot_step, ext_storage::ExtStorage, ext_gogo::ExtGogo, bundle::AvatarBundle};
+use self::{ext_autopilot::autopilot_step, ext_storage::ExtStorage, ext_gogo::ExtGogo, bundle::AvatarBundle, ext_facetrack::ExtFacetrack};
 
 mod bundle;
 mod ext_autopilot;
+mod ext_facetrack;
 mod ext_gogo;
 mod ext_storage;
 
@@ -26,6 +27,7 @@ pub struct AvatarOsc {
     listener: UdpSocket,
     ext_storage: ExtStorage,
     ext_gogo: ExtGogo,
+    ext_facetrack: ExtFacetrack,
 }
 
 pub struct Tracking {
@@ -49,12 +51,14 @@ impl AvatarOsc {
 
         let ext_storage = ExtStorage::new();
         let ext_gogo = ExtGogo::new();
+        let ext_facetrack = ExtFacetrack::new();
 
         AvatarOsc {
             upstream,
             listener,
             ext_storage,
             ext_gogo,
+            ext_facetrack,
         }
     }
 
@@ -124,6 +128,7 @@ impl AvatarOsc {
         let mut bundle = OscBundle::new_bundle();
 
         self.ext_storage.step(&mut bundle);
+        self.ext_facetrack.step(&mut bundle);
         autopilot_step(parameters, tracking, &mut bundle);
 
         bundle.serialize().and_then(|buf| self.send_upstream(&buf).ok());
