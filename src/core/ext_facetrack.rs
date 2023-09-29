@@ -291,6 +291,9 @@ impl UnifiedTrackingData {
             self.shapes[UnifiedExpressions::JawForward as usize] = face_fb.JawThrust;
             self.shapes[UnifiedExpressions::MouthClosed as usize] = face_fb.LipsToward;
 
+            self.shapes[UnifiedExpressions::LipSuckUpperRight as usize] = (1.0 - face_fb.UpperLipRaiserR.powf(0.1666)).min(face_fb.LipSuckRT);
+            self.shapes[UnifiedExpressions::LipSuckUpperLeft as usize] = (1.0 - face_fb.UpperLipRaiserL.powf(0.1666)).min(face_fb.LipSuckLT);
+
             self.shapes[UnifiedExpressions::LipSuckLowerRight as usize] = face_fb.LipSuckRB;
             self.shapes[UnifiedExpressions::LipSuckLowerLeft as usize] = face_fb.LipSuckLB;
             self.shapes[UnifiedExpressions::LipFunnelUpperRight as usize] = face_fb.LipFunnelerRT;
@@ -308,6 +311,14 @@ impl UnifiedTrackingData {
             self.shapes[UnifiedExpressions::MouthLowerDownRight as usize] = face_fb.LowerLipDepressorR;
             self.shapes[UnifiedExpressions::MouthLowerDownLeft as usize] = face_fb.LowerLipDepressorL;
 
+            let mouth_upper_up_right = face_fb.UpperLipRaiserR;
+            let mouth_upper_up_left = face_fb.UpperLipRaiserL;
+            
+            self.shapes[UnifiedExpressions::MouthUpperUpRight as usize] = mouth_upper_up_right;
+            self.shapes[UnifiedExpressions::MouthUpperUpLeft as usize] = mouth_upper_up_left;
+            self.shapes[UnifiedExpressions::MouthUpperDeepenRight as usize] = mouth_upper_up_right;
+            self.shapes[UnifiedExpressions::MouthUpperDeepenLeft as usize] = mouth_upper_up_left;
+            
             self.shapes[UnifiedExpressions::MouthUpperRight as usize] = face_fb.MouthRight;
             self.shapes[UnifiedExpressions::MouthUpperLeft as usize] = face_fb.MouthLeft;
             self.shapes[UnifiedExpressions::MouthLowerRight as usize] = face_fb.MouthRight;
@@ -382,11 +393,6 @@ impl UnifiedTrackingData {
         bundle.send_parameter("v2/SmileSadLeft", OscType::Float(mouth_smile_left - mouth_sad_left));
         bundle.send_parameter("v2/SmileSadRight", OscType::Float(mouth_smile_right - mouth_sad_right));
 
-        bundle.send_parameter("v2/MouthOpen", OscType::Float(
-            (self.shapes[UnifiedExpressions::MouthUpperUpLeft as usize] * 0.25 + self.shapes[UnifiedExpressions::MouthUpperUpRight as usize] * 0.25
-            + self.shapes[UnifiedExpressions::MouthLowerDownLeft as usize] * 0.25 + self.shapes[UnifiedExpressions::MouthLowerDownRight as usize] * 0.25).clamp(0.0, 1.0)
-        ));
-
         bundle.send_parameter("v2/MouthStretch", OscType::Float(
             (self.shapes[UnifiedExpressions::MouthStretchLeft as usize] + self.shapes[UnifiedExpressions::MouthStretchRight as usize]) * 0.5
         ));
@@ -399,13 +405,14 @@ impl UnifiedTrackingData {
             self.shapes[UnifiedExpressions::MouthClosed as usize]
         ));
 
-        bundle.send_parameter("v2/MouthUpperUp", OscType::Float(
-            (self.shapes[UnifiedExpressions::MouthUpperUpLeft as usize] + self.shapes[UnifiedExpressions::MouthUpperUpRight as usize]) * 0.5
-        ));
+        let mouth_upper_up = (self.shapes[UnifiedExpressions::MouthUpperUpLeft as usize] + self.shapes[UnifiedExpressions::MouthUpperUpRight as usize]) * 0.5;
+        let mouth_lower_down = (self.shapes[UnifiedExpressions::MouthLowerDownLeft as usize] + self.shapes[UnifiedExpressions::MouthLowerDownRight as usize]) * 0.5;
 
-        bundle.send_parameter("v2/MouthLowerDown", OscType::Float(
-            (self.shapes[UnifiedExpressions::MouthLowerDownLeft as usize] + self.shapes[UnifiedExpressions::MouthLowerDownRight as usize]) * 0.5
-        ));
+        bundle.send_parameter("v2/MouthUpperUp", OscType::Float(mouth_upper_up));
+
+        bundle.send_parameter("v2/MouthLowerDown", OscType::Float(mouth_lower_down));
+
+        bundle.send_parameter("v2/MouthOpen", OscType::Float((mouth_upper_up + mouth_lower_down) * 0.5));
 
         bundle.send_parameter("v2/MouthX", 
             OscType::Float((self.shapes[UnifiedExpressions::MouthUpperRight as usize] + self.shapes[UnifiedExpressions::MouthLowerRight as usize]) / 2.0 -
