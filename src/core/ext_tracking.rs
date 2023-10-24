@@ -571,6 +571,14 @@ impl UnifiedTrackingData {
         self.shapes[z + CombinedExpression::MouthSadLeft as usize] = mouth_sad_left;
         self.shapes[z + CombinedExpression::MouthSadRight as usize] = mouth_sad_right;
 
+        self.shapes[z + CombinedExpression::MouthUpperX as usize] = self.shapes
+            [UnifiedExpressions::MouthUpperRight as usize]
+            - self.shapes[UnifiedExpressions::MouthUpperLeft as usize];
+
+        self.shapes[z + CombinedExpression::MouthLowerX as usize] = self.shapes
+            [UnifiedExpressions::MouthLowerRight as usize]
+            - self.shapes[UnifiedExpressions::MouthLowerLeft as usize];
+
         self.shapes[z + CombinedExpression::SmileSadLeft as usize] =
             mouth_smile_left - mouth_sad_left;
         self.shapes[z + CombinedExpression::SmileSadRight as usize] =
@@ -955,4 +963,4 @@ fn read_bin<T>(cursor: &mut Cursor<&[u8]>) -> Option<T> {
     }
 }
 
-static FT_PARAMS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(.+?)(Negative|\d)?$").unwrap());
+static FT_PARAMS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(.+?)(Negative|\d+)?$").unwrap());
