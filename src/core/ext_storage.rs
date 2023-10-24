@@ -1,15 +1,15 @@
-use std::{fs::File, path::Path, time::Instant};
+use std::{fs::File, time::Instant};
 
 use log::{debug, info};
 use rosc::{OscBundle, OscType};
 
-use super::bundle::AvatarBundle;
+use super::{bundle::AvatarBundle, folders::CONFIG_DIR};
 
 const FILE_NAME: &str = "extMem.json";
 const LENGTH: usize = 255;
 
 pub struct ExtStorage {
-    path: Option<String>,
+    path: String,
     data: Vec<f32>,
     ext_index: usize,
     ext_value: f32,
@@ -20,19 +20,11 @@ pub struct ExtStorage {
 
 impl ExtStorage {
     pub fn new() -> ExtStorage {
-        let path = std::env::var("XDG_CONFIG_HOME")
-            .or_else(|_| std::env::var("HOME").map(|home| format!("{}/.config", home)))
-            .map(|config| Path::new(&config).join(FILE_NAME))
-            .ok()
-            .and_then(|path| path.to_str().map(|path| path.to_string()));
+        let path = format!("{}/{}", CONFIG_DIR.as_ref(), FILE_NAME);
 
-        let data: Vec<f32> = path
-            .as_ref()
-            .and_then(|path| {
-                File::open(path)
-                    .ok()
-                    .and_then(|file| serde_json::from_reader(file).ok())
-            })
+        let data: Vec<f32> = File::open(&path)
+            .ok()
+            .and_then(|file| serde_json::from_reader(file).ok())
             .unwrap_or_else(|| Some(vec![-1.; LENGTH]))
             .unwrap();
 
@@ -49,12 +41,10 @@ impl ExtStorage {
 
     fn save(&mut self) {
         self.last_save = Instant::now();
-        self.path.as_ref().and_then(|path| {
-            info!("Saving ExtStorage to {}", path);
-            File::create(path)
-                .ok()
-                .and_then(|file| serde_json::to_writer(file, &self.data).ok())
-        });
+        info!("Saving ExtStorage to {}", &self.path);
+        File::create(&self.path)
+            .ok()
+            .and_then(|file| serde_json::to_writer(file, &self.data).ok());
     }
 
     pub fn notify(&mut self, name: &str, value: &OscType) {

@@ -1,33 +1,41 @@
 use glam::{Mat4, Quat, Vec3};
-use log::{info, debug};
+use log::info;
 use rosc::{OscBundle, OscPacket, OscType};
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
-    sync::Arc,
+    sync::{mpsc, Arc},
+    thread,
+    time::Duration,
 };
 
-use self::{ext_autopilot::autopilot_step, ext_storage::ExtStorage, ext_gogo::ExtGogo, bundle::AvatarBundle, ext_facetrack::ExtFacetrack};
+use self::{
+    bundle::AvatarBundle, ext_autopilot::autopilot_step, ext_gogo::ExtGogo,
+    ext_oscjson::ExtOscJson, ext_storage::ExtStorage, ext_tracking::ExtTracking,
+};
 
 mod bundle;
 mod ext_autopilot;
-mod ext_facetrack;
 mod ext_gogo;
+mod ext_oscjson;
 mod ext_storage;
+mod ext_tracking;
+mod folders;
 
+pub const PARAM_PREFIX: &str = "/avatar/parameters/";
 const AVATAR_PREFIX: &str = "/avatar/change";
 const TRACK_PREFIX: &str = "/tracking/vrsystem";
-const PARAM_PREFIX: &str = "/avatar/parameters/";
 const INPUT_PREFIX: &str = "/input/";
 
 pub type AvatarParameters = HashMap<Arc<str>, OscType>;
 
 pub struct AvatarOsc {
+    osc_port: u16,
     upstream: UdpSocket,
-    listener: UdpSocket,
+    ext_oscjson: ExtOscJson,
     ext_storage: ExtStorage,
     ext_gogo: ExtGogo,
-    ext_facetrack: ExtFacetrack,
+    ext_tracking: ExtTracking,
 }
 
 pub struct Tracking {
@@ -40,10 +48,6 @@ impl AvatarOsc {
     pub fn new(osc_port: u16, vrc_port: u16) -> AvatarOsc {
         let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
-        let listener =
-            UdpSocket::bind(SocketAddr::new(ip, osc_port)).expect("bind listener socket");
-        listener.connect("0.0.0.0:0").expect("listener connect");
-
         let upstream = UdpSocket::bind("0.0.0.0:0").expect("bind upstream socket");
         upstream
             .connect(SocketAddr::new(ip, vrc_port))
@@ -51,14 +55,16 @@ impl AvatarOsc {
 
         let ext_storage = ExtStorage::new();
         let ext_gogo = ExtGogo::new();
-        let ext_facetrack = ExtFacetrack::new();
+        let ext_facetrack = ExtTracking::new();
+        let ext_oscjson = ExtOscJson::new();
 
         AvatarOsc {
+            osc_port,
             upstream,
-            listener,
+            ext_oscjson,
             ext_storage,
             ext_gogo,
-            ext_facetrack,
+            ext_tracking: ext_facetrack,
         }
     }
 
@@ -67,9 +73,36 @@ impl AvatarOsc {
     }
 
     pub fn handle_messages(&mut self) {
+        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let listener =
+            UdpSocket::bind(SocketAddr::new(ip, self.osc_port)).expect("bind listener socket");
+
+        let lo = UdpSocket::bind("0.0.0.0:0").expect("bind self socket");
+        lo.connect(SocketAddr::new(ip, self.osc_port)).unwrap();
+        let lo_addr = lo.local_addr().unwrap();
+
+        let (drive_sender, receiver) = mpsc::channel();
+
+        thread::spawn(move || {
+            let mut running = false;
+
+            loop {
+                receiver.try_iter().last().map(|x| {
+                    info!("Self-drive: {}", x);
+                    running = x;
+                });
+                if running {
+                    let _ = lo.send(&[0u8; 1]);
+                    thread::sleep(Duration::from_millis(11));
+                } else {
+                    thread::sleep(Duration::from_secs(1));
+                }
+            }
+        });
+
         info!(
             "Listening for OSC messages on {}",
-            self.listener.local_addr().unwrap()
+            listener.local_addr().unwrap()
         );
 
         let mut parameters: AvatarParameters = AvatarParameters::new();
@@ -81,7 +114,12 @@ impl AvatarOsc {
 
         let mut buf = [0u8; rosc::decoder::MTU];
         loop {
-            if let Ok(size) = self.listener.recv(&mut buf) {
+            if let Ok((size, addr)) = listener.recv_from(&mut buf) {
+                if addr == lo_addr {
+                    self.process(&parameters, &tracking);
+                    continue;
+                }
+
                 if let Ok((_, OscPacket::Message(packet))) = rosc::decoder::decode_udp(&buf[..size])
                 {
                     if packet.addr.starts_with(PARAM_PREFIX) {
@@ -91,7 +129,6 @@ impl AvatarOsc {
                         } else if let Some(arg) = packet.args.into_iter().next() {
                             self.ext_storage.notify(&name, &arg);
                             self.ext_gogo.notify(&name, &arg);
-                            debug!("{} => {:?}", name, arg);
                             parameters.insert(name, arg);
                         }
                     } else if packet.addr.starts_with(TRACK_PREFIX) {
@@ -114,9 +151,19 @@ impl AvatarOsc {
                     } else if packet.addr.starts_with(AVATAR_PREFIX) {
                         if let [OscType::String(avatar)] = &packet.args[..] {
                             info!("Avatar changed: {:?}", avatar);
+                            let osc_root_node = self.ext_oscjson.avatar(avatar);
+                            if let Some(osc_root_node) = osc_root_node.as_ref() {
+                                self.ext_tracking.osc_json(osc_root_node);
+                            }
+
                             let mut bundle = OscBundle::new_bundle();
                             self.ext_gogo.avatar(&mut bundle);
-                            bundle.serialize().and_then(|buf| self.send_upstream(&buf).ok());
+                            bundle
+                                .serialize()
+                                .and_then(|buf| self.send_upstream(&buf).ok());
+
+                            let _ =
+                                drive_sender.send(!osc_root_node.is_some_and(|n| n.has_vsync()));
                         }
                     }
                 }
@@ -124,13 +171,38 @@ impl AvatarOsc {
         }
     }
 
-    fn process(&mut self, parameters: &AvatarParameters, tracking: &Tracking) {
+    pub fn run_headless(&mut self) {
+        info!("Running in headless mode.");
+        let parameters: AvatarParameters = AvatarParameters::new();
+        let tracking: Tracking = Tracking {
+            head: Mat4::IDENTITY,
+            left_hand: Mat4::IDENTITY,
+            right_hand: Mat4::IDENTITY,
+        };
+
+        loop {
+            self.process(&parameters, &tracking);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+
+    fn process(&mut self, parameters: &AvatarParameters, _tracking: &Tracking) {
+        //TODO: cleanup _tracking
         let mut bundle = OscBundle::new_bundle();
 
+        self.ext_oscjson.step();
         self.ext_storage.step(&mut bundle);
-        self.ext_facetrack.step(&mut bundle);
-        autopilot_step(parameters, tracking, &mut bundle);
+        let bundles = self.ext_tracking.step(parameters);
+        autopilot_step(parameters, &self.ext_tracking, &mut bundle);
 
-        bundle.serialize().and_then(|buf| self.send_upstream(&buf).ok());
+        for bundle in bundles {
+            bundle
+                .serialize()
+                .and_then(|buf| self.send_upstream(&buf).ok());
+        }
+
+        bundle
+            .serialize()
+            .and_then(|buf| self.send_upstream(&buf).ok());
     }
 }

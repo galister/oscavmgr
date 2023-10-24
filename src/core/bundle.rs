@@ -1,3 +1,4 @@
+use log::debug;
 use rosc::{OscBundle, OscMessage, OscPacket, OscType};
 
 use super::{INPUT_PREFIX, PARAM_PREFIX};
@@ -15,35 +16,46 @@ pub trait AvatarBundle {
 impl AvatarBundle for OscBundle {
     fn new_bundle() -> OscBundle {
         OscBundle {
-            timetag: rosc::OscTime { seconds: 0, fractional: 0 },
+            timetag: rosc::OscTime {
+                seconds: 0,
+                fractional: 0,
+            },
             content: Vec::new(),
         }
     }
     fn send_parameter(&mut self, name: &str, value: OscType) {
+        debug!("Sending parameter {} = {:?}", name, value);
         self.content.push(OscPacket::Message(OscMessage {
             addr: format!("{}{}", PARAM_PREFIX, name),
             args: vec![value],
         }));
     }
-    fn send_tracking(&mut self, addr:&str, args: Vec<OscType>) {
+    fn send_tracking(&mut self, addr: &str, args: Vec<OscType>) {
+        debug!("Sending tracking {} = {:?}", addr, args);
         self.content.push(OscPacket::Message(OscMessage {
             addr: addr.to_string(),
             args,
         }));
     }
     fn send_input_axis(&mut self, name: &str, value: f32) {
+        debug!("Sending input axis {} = {:?}", name, value);
         self.content.push(OscPacket::Message(OscMessage {
             addr: format!("{}{}", INPUT_PREFIX, name),
             args: vec![OscType::Float(value)],
         }));
     }
     fn send_input_button(&mut self, name: &str, value: bool) {
+        debug!("Sending input button {} = {:?}", name, value);
         self.content.push(OscPacket::Message(OscMessage {
             addr: format!("{}{}", INPUT_PREFIX, name),
-            args: vec![OscType::Float(value as u8 as f32)],
+            args: vec![OscType::Bool(value)],
         }));
     }
     fn send_chatbox_message(&mut self, message: String, open_keyboard: bool, play_sound: bool) {
+        debug!(
+            "Sending chatbox message {} = {:?} {:?}",
+            message, open_keyboard, play_sound
+        );
         self.content.push(OscPacket::Message(OscMessage {
             addr: "/chatbox/input/".to_string(),
             args: vec![

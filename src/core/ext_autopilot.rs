@@ -1,16 +1,20 @@
 use std::{
     collections::HashMap,
     f32::consts::PI,
+    ops::Range,
     sync::{
         atomic::{AtomicBool, AtomicI32},
         Arc,
-    }, ops::Range,
+    },
 };
 
 use glam::Vec3;
+use log::info;
 use rosc::{OscBundle, OscType};
 
-use super::{bundle::AvatarBundle, Tracking, AvatarParameters};
+use crate::core::ext_tracking::UnifiedExpressions;
+
+use super::{bundle::AvatarBundle, ext_tracking::ExtTracking, AvatarParameters};
 
 const CONTACT_RADIUS: f32 = 3.;
 const DIST_MULTIPLIER: f32 = 25.;
@@ -75,29 +79,30 @@ fn vec3_to_target(parameters: &HashMap<Arc<str>, OscType>) -> Option<Vec3> {
     }
 }
 
-fn avatar_flight(
-    parameters: &AvatarParameters,
-    tracking: &Tracking,
-    bundle: &mut OscBundle,
-) {
+static VOICE: AtomicBool = AtomicBool::new(false);
+static VOICE_LOCK: AtomicBool = AtomicBool::new(false);
+static JUMPED: AtomicBool = AtomicBool::new(false);
+static COUNTDOWN: AtomicI32 = AtomicI32::new(0);
+fn avatar_flight(parameters: &AvatarParameters, tracking: &ExtTracking, bundle: &mut OscBundle) {
     const FLIGHT_INTS: Range<i32> = 120..125;
-    static JUMPED: AtomicBool = AtomicBool::new(false);
-    static COUNTDOWN: AtomicI32 = AtomicI32::new(0);
 
     if let Some(OscType::Int(emote)) = parameters.get("VRCEmote") {
         if FLIGHT_INTS.contains(emote)
-            && tracking.left_hand.w_axis.y > tracking.head.w_axis.y
-            && tracking.right_hand.w_axis.y > tracking.head.w_axis.y
+            && tracking.controllers[0].position.y > tracking.hmd.position.y
+            && tracking.controllers[1].position.y > tracking.hmd.position.y
         {
             let jumped = JUMPED.load(std::sync::atomic::Ordering::Relaxed);
             let countdown = COUNTDOWN.load(std::sync::atomic::Ordering::Relaxed);
 
             if !jumped && countdown <= 0 {
-                let diff = (tracking.left_hand.w_axis.y + tracking.right_hand.w_axis.y) * 0.5 + 0.1
-                    - tracking.head.w_axis.y;
+                let diff =
+                    (tracking.controllers[0].position.y + tracking.controllers[1].position.y) * 0.5
+                        + 0.1
+                        - tracking.hmd.position.y;
                 let diff = diff.clamp(0., 0.3);
 
                 bundle.send_input_button("Jump", true);
+                info!("Jumping with diff {}", diff);
 
                 JUMPED.store(true, std::sync::atomic::Ordering::Relaxed);
                 COUNTDOWN.store(
@@ -119,7 +124,7 @@ fn avatar_flight(
 
 pub fn autopilot_step(
     parameters: &AvatarParameters,
-    tracking: &Tracking,
+    tracking: &ExtTracking,
     bundle: &mut OscBundle,
 ) {
     static FOLLOW_BEFORE: AtomicBool = AtomicBool::new(false);
@@ -165,6 +170,53 @@ pub fn autopilot_step(
                 horizontal = tgt.x / dist_horizontal * mult;
                 FOLLOW_BEFORE.store(true, std::sync::atomic::Ordering::Relaxed);
             }
+        }
+    } else if (tracking.controllers[0].position - tracking.controllers[1].position).length() < 0.075
+    {
+        let deg = tracking.face.eye.right.gaze.x.atan().to_degrees();
+        if !(-10. ..=20.).contains(&deg) {
+            look_horizontal = (deg * 0.02).min(1.);
+        }
+
+        let deg = tracking.face.eye.right.gaze.y.atan().to_degrees();
+        if deg > 15. && !JUMPED.load(std::sync::atomic::Ordering::Relaxed) {
+            bundle.send_input_button("Jump", true);
+            JUMPED.store(true, std::sync::atomic::Ordering::Relaxed);
+        } else if JUMPED.load(std::sync::atomic::Ordering::Relaxed) {
+            bundle.send_input_button("Jump", false);
+            JUMPED.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        let puff = tracking.face.shapes[UnifiedExpressions::CheekPuffLeft as usize]
+            + tracking.face.shapes[UnifiedExpressions::CheekPuffRight as usize];
+
+        let suck = tracking.face.shapes[UnifiedExpressions::CheekSuckLeft as usize]
+            + tracking.face.shapes[UnifiedExpressions::CheekSuckRight as usize];
+
+        if puff > 0.5 {
+            vertical = (puff * 0.6).min(1.0);
+        } else if suck > 0.5 {
+            vertical = -(suck * 0.6).min(1.0);
+        }
+
+        let brows = tracking.face.shapes[UnifiedExpressions::BrowInnerUpLeft as usize]
+            + tracking.face.shapes[UnifiedExpressions::BrowInnerUpRight as usize]
+            + tracking.face.shapes[UnifiedExpressions::BrowOuterUpLeft as usize]
+            + tracking.face.shapes[UnifiedExpressions::BrowOuterUpRight as usize];
+
+        if brows < 2.0 {
+            VOICE_LOCK.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        if brows > 3.0 && !VOICE.load(std::sync::atomic::Ordering::Relaxed) {
+            bundle.send_input_button("Voice", true);
+            VOICE.store(true, std::sync::atomic::Ordering::Relaxed);
+            VOICE_LOCK.store(true, std::sync::atomic::Ordering::Relaxed);
+        } else if VOICE.load(std::sync::atomic::Ordering::Relaxed)
+            && !VOICE_LOCK.load(std::sync::atomic::Ordering::Relaxed)
+        {
+            bundle.send_input_button("Voice", false);
+            VOICE.store(false, std::sync::atomic::Ordering::Relaxed);
         }
     }
 
