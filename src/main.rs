@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-use std::env;
 
 use crate::core::AvatarOsc;
 use env_logger::Env;
@@ -14,11 +13,7 @@ fn main() {
 
     let mut osc = AvatarOsc::new(OSC_PORT, VRC_PORT);
 
-    let headless = env::args().any(|arg| arg == "--headless");
+    //let headless = env::args().any(|arg| arg == "--headless");
 
-    if headless {
-        osc.run_headless();
-    } else {
-        osc.handle_messages();
-    }
+    osc.handle_messages();
 }

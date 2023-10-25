@@ -116,7 +116,7 @@ impl AvatarOsc {
         loop {
             if let Ok((size, addr)) = listener.recv_from(&mut buf) {
                 if addr == lo_addr {
-                    self.process(&parameters, &tracking);
+                    self.process(&parameters, &drive_sender);
                     continue;
                 }
 
@@ -125,7 +125,7 @@ impl AvatarOsc {
                     if packet.addr.starts_with(PARAM_PREFIX) {
                         let name: Arc<str> = packet.addr[PARAM_PREFIX.len()..].into();
                         if &*name == "VSync" {
-                            self.process(&parameters, &tracking);
+                            self.process(&parameters, &drive_sender);
                         } else if let Some(arg) = packet.args.into_iter().next() {
                             self.ext_storage.notify(&name, &arg);
                             self.ext_gogo.notify(&name, &arg);
@@ -150,20 +150,7 @@ impl AvatarOsc {
                         }
                     } else if packet.addr.starts_with(AVATAR_PREFIX) {
                         if let [OscType::String(avatar)] = &packet.args[..] {
-                            info!("Avatar changed: {:?}", avatar);
-                            let osc_root_node = self.ext_oscjson.avatar(avatar);
-                            if let Some(osc_root_node) = osc_root_node.as_ref() {
-                                self.ext_tracking.osc_json(osc_root_node);
-                            }
-
-                            let mut bundle = OscBundle::new_bundle();
-                            self.ext_gogo.avatar(&mut bundle);
-                            bundle
-                                .serialize()
-                                .and_then(|buf| self.send_upstream(&buf).ok());
-
-                            let _ =
-                                drive_sender.send(!osc_root_node.is_some_and(|n| n.has_vsync()));
+                            self.avatar(avatar, &drive_sender);
                         }
                     }
                 }
@@ -171,26 +158,28 @@ impl AvatarOsc {
         }
     }
 
-    pub fn run_headless(&mut self) {
-        info!("Running in headless mode.");
-        let parameters: AvatarParameters = AvatarParameters::new();
-        let tracking: Tracking = Tracking {
-            head: Mat4::IDENTITY,
-            left_hand: Mat4::IDENTITY,
-            right_hand: Mat4::IDENTITY,
-        };
-
-        loop {
-            self.process(&parameters, &tracking);
-            std::thread::sleep(std::time::Duration::from_millis(10));
+    fn avatar(&mut self, avatar: &str, drive_sender: &mpsc::Sender<bool>) {
+        info!("Avatar changed: {}", avatar);
+        let osc_root_node = self.ext_oscjson.avatar();
+        if let Some(osc_root_node) = osc_root_node.as_ref() {
+            self.ext_tracking.osc_json(osc_root_node);
         }
+
+        let mut bundle = OscBundle::new_bundle();
+        self.ext_gogo.avatar(&mut bundle);
+        bundle
+            .serialize()
+            .and_then(|buf| self.send_upstream(&buf).ok());
+
+        let _ = drive_sender.send(!osc_root_node.is_some_and(|n| n.has_vsync()));
     }
 
-    fn process(&mut self, parameters: &AvatarParameters, _tracking: &Tracking) {
-        //TODO: cleanup _tracking
+    fn process(&mut self, parameters: &AvatarParameters, drive_sender: &mpsc::Sender<bool>) {
         let mut bundle = OscBundle::new_bundle();
 
-        self.ext_oscjson.step();
+        if self.ext_oscjson.step() {
+            self.avatar("<unknown>", drive_sender);
+        }
         self.ext_storage.step(&mut bundle);
         let bundles = self.ext_tracking.step(parameters);
         autopilot_step(parameters, &self.ext_tracking, &mut bundle);

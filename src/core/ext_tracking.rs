@@ -237,6 +237,10 @@ pub enum CombinedExpression {
     CheekPuffSuckRight,
     CheekPuffSuck,
     CheekSquint,
+
+    // Non-standard
+    EarLeft,
+    EarRight,
 }
 const NUM_SHAPES: usize = UnifiedExpressions::COUNT + CombinedExpression::COUNT;
 
@@ -701,6 +705,20 @@ impl UnifiedTrackingData {
             [UnifiedExpressions::NoseSneerLeft as usize]
             + self.shapes[UnifiedExpressions::NoseSneerRight as usize])
             * 0.5;
+
+        self.shapes[z + CombinedExpression::EarLeft as usize] = (self.shapes
+            [UnifiedExpressions::BrowInnerUpLeft as usize]
+            + self.shapes[UnifiedExpressions::EyeWideLeft as usize]
+            - self.shapes[UnifiedExpressions::EyeSquintLeft as usize]
+            - self.shapes[UnifiedExpressions::BrowPinchLeft as usize])
+            .clamp(-1.0, 1.0);
+
+        self.shapes[z + CombinedExpression::EarRight as usize] = (self.shapes
+            [UnifiedExpressions::BrowInnerUpLeft as usize]
+            + self.shapes[UnifiedExpressions::EyeWideRight as usize]
+            - self.shapes[UnifiedExpressions::EyeSquintRight as usize]
+            - self.shapes[UnifiedExpressions::BrowPinchRight as usize])
+            .clamp(-1.0, 1.0);
     }
 
     pub fn apply_to_bundle(&mut self, params: &[Option<MysteryParam>; NUM_SHAPES]) -> OscBundle {

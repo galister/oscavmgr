@@ -29,9 +29,10 @@ impl ExtOscJson {
         }
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self) -> bool {
+        let mut notify_avatar = false;
         if self.next_run > std::time::Instant::now() {
-            return;
+            return notify_avatar;
         }
         self.next_run = std::time::Instant::now() + std::time::Duration::from_secs(5);
 
@@ -48,20 +49,29 @@ impl ExtOscJson {
                         addr,
                         info.get_port()
                     );
+
+                    if self.oscjson_addr.is_none() {
+                        notify_avatar = true;
+                    }
+
                     self.oscjson_addr =
                         Some(format!("http://{}:{}/avatar", addr, info.get_port()).into());
                 }
             }
 
             if self.oscjson_addr.is_some() {
+                if notify_avatar {
+                    self.avatar();
+                }
                 break;
             } else {
                 thread::sleep(Duration::from_millis(10));
             }
         }
+        notify_avatar
     }
 
-    pub fn avatar(&mut self, _id: &str) -> Option<OscJsonNode> {
+    pub fn avatar(&mut self) -> Option<OscJsonNode> {
         let Some(addr) = self.oscjson_addr.as_ref() else {
             warn!("No avatar oscjson address.");
             return None;
@@ -143,7 +153,7 @@ impl MysteryParam {
             value = 0.;
         }
 
-        let value = (value * (1 << (self.num_bits - 1)) as f32) as i32;
+        let value = (value * ((1 << self.num_bits) - 1) as f32) as i32;
 
         self.addresses
             .iter()
