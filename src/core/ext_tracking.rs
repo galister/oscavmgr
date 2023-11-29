@@ -23,6 +23,7 @@ enum TrackingMessage {
     PoseConR(Pose),
     HandSkeL([Pose; 26]),
     HandSkeR([Pose; 26]),
+    EyesQuat([Quat; 2]),
 }
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -32,7 +33,7 @@ pub struct Pose {
 }
 
 impl Pose {
-    pub fn from_arr(arr: [f32; 7]) -> Self {
+    pub fn from_arr(arr: &[f32]) -> Self {
         Self {
             orientation: Quat::from_xyzw(arr[0], arr[1], arr[2], arr[3]),
             position: Vec3::new(arr[4], arr[5], arr[6]),
@@ -42,7 +43,7 @@ impl Pose {
 
 #[allow(unused)]
 #[repr(usize)]
-#[derive(Debug, EnumIter, EnumCount, EnumString, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, EnumIter, EnumCount, EnumString, IntoStaticStr)]
 pub enum UnifiedExpressions {
     // These are currently unused for expressions and used in the UnifiedEye structure.
     // EyeLookOutRight,
@@ -185,7 +186,7 @@ pub enum UnifiedExpressions {
 
 #[allow(unused)]
 #[repr(usize)]
-#[derive(Debug, EnumIter, EnumCount, EnumString, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, EnumIter, EnumCount, EnumString, IntoStaticStr)]
 pub enum CombinedExpression {
     EyeLidLeft,
     EyeLidRight,
@@ -721,29 +722,20 @@ impl UnifiedTrackingData {
             .clamp(-1.0, 1.0);
     }
 
-    pub fn apply_to_bundle(&mut self, params: &[Option<MysteryParam>; NUM_SHAPES]) -> OscBundle {
-        let mut bundle = OscBundle::new_bundle();
-
+    pub fn apply_to_bundle(
+        &mut self,
+        params: &[Option<MysteryParam>; NUM_SHAPES],
+        bundle: &mut OscBundle,
+    ) {
         bundle.send_parameter("ExpressionTrackingActive", OscType::Bool(true));
         bundle.send_parameter("LipTrackingActive", OscType::Bool(true));
         //bundle.send_parameter("EyeTrackingActive", OscType::Bool(true));
 
-        bundle.send_tracking(
-            "/tracking/eye/LeftRightPitchYaw",
-            vec![
-                OscType::Float((-self.eye.left.gaze.y.atan()).to_degrees()),
-                OscType::Float(self.eye.left.gaze.x.atan().to_degrees()),
-                OscType::Float((-self.eye.right.gaze.y.atan()).to_degrees()),
-                OscType::Float(self.eye.right.gaze.x.atan().to_degrees()),
-            ],
-        );
-
         for idx in 0..NUM_SHAPES {
             if let Some(param) = &params[idx] {
-                param.send(self.shapes[idx], &mut bundle)
+                param.send(self.shapes[idx], bundle)
             }
         }
-        bundle
     }
 }
 
@@ -751,6 +743,7 @@ pub struct ExtTracking {
     pub hmd: Pose,
     pub controllers: [Pose; 2],
     pub hands: [Option<[Pose; 26]>; 2],
+    pub eyes: [Quat; 2],
     pub face: UnifiedTrackingData,
     receiver: Receiver<TrackingMessage>,
     params: [Option<MysteryParam>; NUM_SHAPES],
@@ -761,21 +754,78 @@ impl ExtTracking {
         let size = std::mem::size_of::<TrackingMessage>();
         let (sender, receiver) = sync_channel(size * 32);
 
+        let default_combined = vec![
+            CombinedExpression::BrowExpressionLeft,
+            CombinedExpression::BrowExpressionRight,
+            CombinedExpression::EyeLidLeft,
+            CombinedExpression::EyeLidRight,
+            CombinedExpression::JawX,
+            CombinedExpression::LipFunnelLower,
+            CombinedExpression::LipFunnelUpper,
+            CombinedExpression::LipPucker,
+            CombinedExpression::MouthLowerDown,
+            CombinedExpression::MouthStretchTightenLeft,
+            CombinedExpression::MouthStretchTightenRight,
+            CombinedExpression::MouthUpperUp,
+            CombinedExpression::MouthX,
+            CombinedExpression::SmileSadLeft,
+            CombinedExpression::SmileSadRight,
+        ];
+
+        let default_unified = vec![
+            UnifiedExpressions::CheekPuffLeft,
+            UnifiedExpressions::CheekPuffRight,
+            UnifiedExpressions::EyeSquintLeft,
+            UnifiedExpressions::EyeSquintRight,
+            UnifiedExpressions::JawOpen,
+            UnifiedExpressions::MouthClosed,
+        ];
+
+        let mut params = array::from_fn(|_| None);
+
+        for e in default_combined.into_iter() {
+            let name: &str = e.into();
+            let new = MysteryParam {
+                name: name.into(),
+                main_address: Some(format!("FT/v2/{}", name).into()),
+                addresses: array::from_fn(|_| None),
+                neg_address: None,
+                num_bits: 0,
+            };
+            params[UnifiedExpressions::COUNT + (e as usize)] = Some(new);
+        }
+
+        for e in default_unified.into_iter() {
+            let name: &str = e.into();
+            let new = MysteryParam {
+                name: name.into(),
+                main_address: Some(format!("FT/v2/{}", name).into()),
+                addresses: array::from_fn(|_| None),
+                neg_address: None,
+                num_bits: 0,
+            };
+            params[e as usize] = Some(new);
+        }
+
         thread::spawn(move || {
             receive(sender);
         });
 
-        Self {
+        let me = Self {
             receiver,
             face: UnifiedTrackingData::new(),
             hmd: Pose::default(),
             controllers: [Pose::default(), Pose::default()],
             hands: [None, None],
-            params: array::from_fn(|_| None),
-        }
+            eyes: [Quat::default(), Quat::default()],
+            params,
+        };
+        me.print_params();
+
+        me
     }
 
-    pub fn step(&mut self, parameters: &AvatarParameters) -> Vec<OscBundle> {
+    pub fn step(&mut self, parameters: &AvatarParameters, bundle: &mut OscBundle) {
         for tracking in self.receiver.try_iter() {
             match tracking {
                 TrackingMessage::FaceFb(face_fb) => match parameters.get("Motion") {
@@ -799,21 +849,29 @@ impl ExtTracking {
                 TrackingMessage::HandSkeR(skel_r) => {
                     self.hands[1] = Some(skel_r);
                 }
+                TrackingMessage::EyesQuat(eyes_quat) => match parameters.get("Motion") {
+                    Some(OscType::Int(1)) => {}
+                    _ => {
+                        self.eyes = eyes_quat;
+                    }
+                },
             }
         }
 
-        let big_bundle = self.face.apply_to_bundle(&self.params);
+        self.face.apply_to_bundle(&self.params, bundle);
 
-        // chunk it up into multiple bundles to fit in a single UDP packet
-        big_bundle
-            .content
-            .chunks(30)
-            .map(|chunk| {
-                let mut bundle = OscBundle::new_bundle();
-                bundle.content.extend_from_slice(chunk);
-                bundle
-            })
-            .collect()
+        let left_euler = self.eyes[0].to_euler(glam::EulerRot::ZXY);
+        let right_euler = self.eyes[1].to_euler(glam::EulerRot::ZXY);
+
+        bundle.send_tracking(
+            "/tracking/eye/LeftRightPitchYaw",
+            vec![
+                OscType::Float(-left_euler.1.to_degrees()),
+                OscType::Float(-left_euler.2.to_degrees()),
+                OscType::Float(-right_euler.1.to_degrees()),
+                OscType::Float(-right_euler.2.to_degrees()),
+            ],
+        );
     }
 
     pub fn osc_json(&mut self, root_node: &OscJsonNode) {
@@ -875,7 +933,10 @@ impl ExtTracking {
 
                 None
             });
+        self.print_params();
+    }
 
+    fn print_params(&self) {
         for v in self.params.iter().filter_map(|p| p.as_ref()) {
             if v.main_address.as_ref().is_some() {
                 info!("{}: float", v.name,);
@@ -915,36 +976,50 @@ fn receive(sender: SyncSender<TrackingMessage>) {
                         break;
                     };
                     message = TrackingMessage::FaceFb(face_fb);
+                } else if id == *b"EyesQuat" {
+                    let Some(eyes_quat) = read_bin::<[Quat; 2]>(&mut cur) else {
+                        warn!("Failed to read EyesQuat message");
+                        break;
+                    };
+                    message = TrackingMessage::EyesQuat(eyes_quat);
                 } else if id == *b"PoseHmd\0" {
-                    let Some(pose_head) = read_bin::<[f32; 7]>(&mut cur) else {
+                    let Some(pose_head) = read_bin::<[f32;7]>(&mut cur) else {
                         warn!("Failed to read PoseHmd message");
                         break;
                     };
-                    message = TrackingMessage::PoseHead(Pose::from_arr(pose_head));
+                    message = TrackingMessage::PoseHead(Pose::from_arr(&pose_head));
                 } else if id == *b"PoseCnL\0" {
-                    let Some(pose_con_l) = read_bin::<[f32; 7]>(&mut cur) else {
+                    let Some(pose_con_l) = read_bin::<[f32;7]>(&mut cur) else {
                         warn!("Failed to read PoseCnL message");
                         break;
                     };
-                    message = TrackingMessage::PoseConL(Pose::from_arr(pose_con_l));
+                    message = TrackingMessage::PoseConL(Pose::from_arr(&pose_con_l));
                 } else if id == *b"PoseCnR\0" {
-                    let Some(pose_con_r) = read_bin::<[f32; 7]>(&mut cur) else {
+                    let Some(pose_con_r) = read_bin::<[f32;7]>(&mut cur) else {
                         warn!("Failed to read PoseCnR message");
                         break;
                     };
-                    message = TrackingMessage::PoseConR(Pose::from_arr(pose_con_r));
+                    message = TrackingMessage::PoseConR(Pose::from_arr(&pose_con_r));
                 } else if id == *b"HandSkL\0" {
-                    let Some(skel_l) = read_bin::<[Pose; 26]>(&mut cur) else {
+                    let Some(skel_l) = read_bin::<[f32; 26*7]>(&mut cur) else {
                         warn!("Failed to read HandSkL message");
                         break;
                     };
-                    message = TrackingMessage::HandSkeL(skel_l);
+                    let mut poses: [Pose; 26] = Default::default();
+                    for (i, chunk) in skel_l.chunks_exact(7).enumerate() {
+                        poses[i] = Pose::from_arr(chunk);
+                    }
+                    message = TrackingMessage::HandSkeL(poses);
                 } else if id == *b"HandSkR\0" {
-                    let Some(skel_r) = read_bin::<[Pose; 26]>(&mut cur) else {
+                    let Some(skel_r) = read_bin::<[f32; 26*7]>(&mut cur) else {
                         warn!("Failed to read HandSkR message");
                         break;
                     };
-                    message = TrackingMessage::HandSkeR(skel_r);
+                    let mut poses: [Pose; 26] = Default::default();
+                    for (i, chunk) in skel_r.chunks_exact(7).enumerate() {
+                        poses[i] = Pose::from_arr(chunk);
+                    }
+                    message = TrackingMessage::HandSkeR(poses);
                 } else {
                     warn!("Unknown tracking message type: {:?}", id);
                     break;

@@ -6,12 +6,16 @@ use serde::{Deserialize, Serialize};
 
 use super::bundle::AvatarBundle;
 use super::folders::CONFIG_DIR;
+use super::AvatarParameters;
 
 const FILE_NAME: &str = "extGogo.json";
 
 const STAND_PARAM: &str = "Go/StandIdle";
 const CROUCH_PARAM: &str = "Go/CrouchIdle";
 const PRONE_PARAM: &str = "Go/ProneIdle";
+const LOCO_PARAM: &str = "Go/Locomotion";
+
+const TRACKING_TYPE: &str = "TrackingType";
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct ExtGogo {
@@ -74,5 +78,20 @@ impl ExtGogo {
         bundle.send_parameter(STAND_PARAM, OscType::Int(self.idle_stand));
         bundle.send_parameter(CROUCH_PARAM, OscType::Int(self.idle_crouch));
         bundle.send_parameter(PRONE_PARAM, OscType::Int(self.idle_prone));
+    }
+
+    pub fn step(&self, parameters: &AvatarParameters, bundle: &mut OscBundle) {
+        if let Some(OscType::Int(tracking)) = parameters.get(TRACKING_TYPE) {
+            let want_loco = if 5 < *tracking {
+                OscType::Bool(false)
+            } else {
+                OscType::Bool(true)
+            };
+
+            if parameters.get(LOCO_PARAM) != Some(&want_loco) {
+                info!("Set Locomotion: {:?}", want_loco);
+                bundle.send_parameter(LOCO_PARAM, want_loco);
+            }
+        }
     }
 }

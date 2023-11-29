@@ -53,17 +53,20 @@ impl AvatarBundle for OscBundle {
     }
     fn send_chatbox_message(&mut self, message: String, open_keyboard: bool, play_sound: bool) {
         debug!(
-            "Sending chatbox message {} = {:?} {:?}",
+            "Sending chatbox message {} (kbd: {:?}, sfx: {:?})",
             message, open_keyboard, play_sound
         );
-        self.content.push(OscPacket::Message(OscMessage {
-            addr: "/chatbox/input/".to_string(),
-            args: vec![
-                OscType::String(message),
-                OscType::Bool(open_keyboard),
-                OscType::Bool(play_sound),
-            ],
-        }));
+        self.content.insert(
+            0,
+            OscPacket::Message(OscMessage {
+                addr: "/chatbox/input/".to_string(),
+                args: vec![
+                    OscType::String(message),
+                    OscType::Bool(open_keyboard),
+                    OscType::Bool(play_sound),
+                ],
+            }),
+        );
     }
     fn serialize(self) -> Option<Vec<u8>> {
         if !self.content.is_empty() {

@@ -34,38 +34,33 @@ impl ExtOscJson {
         if self.next_run > std::time::Instant::now() {
             return notify_avatar;
         }
-        self.next_run = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        self.next_run = std::time::Instant::now() + std::time::Duration::from_secs(15);
 
-        loop {
-            for event in self.mdns_recv.try_iter() {
-                if let ServiceEvent::ServiceResolved(info) = event {
-                    if !info.get_fullname().starts_with("VRChat-Client-") {
-                        continue;
-                    }
-                    let addr = info.get_addresses().iter().next().unwrap();
-                    info!(
-                        "Found OSCJSON service: {} @ {}:{}",
-                        info.get_fullname(),
-                        addr,
-                        info.get_port()
-                    );
-
-                    if self.oscjson_addr.is_none() {
-                        notify_avatar = true;
-                    }
-
-                    self.oscjson_addr =
-                        Some(format!("http://{}:{}/avatar", addr, info.get_port()).into());
+        for event in self.mdns_recv.try_iter() {
+            if let ServiceEvent::ServiceResolved(info) = event {
+                if !info.get_fullname().starts_with("VRChat-Client-") {
+                    continue;
                 }
+                let addr = info.get_addresses().iter().next().unwrap();
+                info!(
+                    "Found OSCJSON service: {} @ {}:{}",
+                    info.get_fullname(),
+                    addr,
+                    info.get_port()
+                );
+
+                if self.oscjson_addr.is_none() {
+                    notify_avatar = true;
+                }
+
+                self.oscjson_addr =
+                    Some(format!("http://{}:{}/avatar", addr, info.get_port()).into());
             }
+        }
 
-            if self.oscjson_addr.is_some() {
-                if notify_avatar {
-                    self.avatar();
-                }
-                break;
-            } else {
-                thread::sleep(Duration::from_millis(10));
+        if self.oscjson_addr.is_some() {
+            if notify_avatar {
+                self.avatar();
             }
         }
         notify_avatar

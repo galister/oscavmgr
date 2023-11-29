@@ -84,7 +84,7 @@ impl AvatarOsc {
         let (drive_sender, receiver) = mpsc::channel();
 
         thread::spawn(move || {
-            let mut running = false;
+            let mut running = true;
 
             loop {
                 receiver.try_iter().last().map(|x| {
@@ -181,17 +181,29 @@ impl AvatarOsc {
             self.avatar("<unknown>", drive_sender);
         }
         self.ext_storage.step(&mut bundle);
-        let bundles = self.ext_tracking.step(parameters);
+        self.ext_tracking.step(parameters, &mut bundle);
         autopilot_step(parameters, &self.ext_tracking, &mut bundle);
 
-        for bundle in bundles {
+        if let Some(packet) = bundle.content.first() {
+            match packet {
+                OscPacket::Message(..) => {
+                    rosc::encoder::encode(&packet)
+                        .ok()
+                        .and_then(|buf| self.send_upstream(&buf).ok());
+                    bundle.content.remove(0);
+                }
+                _ => {}
+            }
+        }
+
+        for bundle in bundle.content.chunks(30).map(|chunk| {
+            let mut bundle = OscBundle::new_bundle();
+            bundle.content.extend_from_slice(chunk);
+            bundle
+        }) {
             bundle
                 .serialize()
                 .and_then(|buf| self.send_upstream(&buf).ok());
         }
-
-        bundle
-            .serialize()
-            .and_then(|buf| self.send_upstream(&buf).ok());
     }
 }
