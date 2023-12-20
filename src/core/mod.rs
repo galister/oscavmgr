@@ -182,6 +182,7 @@ impl AvatarOsc {
         }
         self.ext_storage.step(&mut bundle);
         self.ext_tracking.step(parameters, &mut bundle);
+        self.ext_gogo.step(parameters, &mut bundle);
         autopilot_step(parameters, &self.ext_tracking, &mut bundle);
 
         if let Some(packet) = bundle.content.first() {

@@ -347,12 +347,10 @@ impl UnifiedTrackingData {
 
     pub fn load_face(&mut self, face_fb: &[f32; 63]) {
         self.eye.left.openness = 1.
-            - (face_fb[FaceFb::EyesClosedL as usize]
-                + face_fb[FaceFb::EyesClosedL as usize] * face_fb[FaceFb::LidTightenerL as usize])
+            - (face_fb[FaceFb::EyesClosedL as usize]) //+ face_fb[FaceFb::EyesClosedL as usize] * face_fb[FaceFb::LidTightenerL as usize])
                 .clamp(0.0, 1.0);
         self.eye.right.openness = 1.
-            - (face_fb[FaceFb::EyesClosedR as usize]
-                + face_fb[FaceFb::EyesClosedR as usize] * face_fb[FaceFb::LidTightenerR as usize])
+            - (face_fb[FaceFb::EyesClosedR as usize]) //+ face_fb[FaceFb::EyesClosedR as usize] * face_fb[FaceFb::LidTightenerR as usize])
                 .clamp(0.0, 1.0);
 
         self.eye.left.gaze.x = (face_fb[FaceFb::EyesLookRightL as usize]
@@ -371,9 +369,9 @@ impl UnifiedTrackingData {
         self.eye.right.pupil_diameter_mm = 0.5;
 
         self.shapes[UnifiedExpressions::EyeSquintRight as usize] =
-            face_fb[FaceFb::LidTightenerR as usize];
+            face_fb[FaceFb::LidTightenerR as usize] - face_fb[FaceFb::EyesClosedR as usize];
         self.shapes[UnifiedExpressions::EyeSquintLeft as usize] =
-            face_fb[FaceFb::LidTightenerL as usize];
+            face_fb[FaceFb::LidTightenerL as usize] - face_fb[FaceFb::EyesClosedL as usize];
         self.shapes[UnifiedExpressions::EyeWideRight as usize] =
             face_fb[FaceFb::UpperLidRaiserR as usize];
         self.shapes[UnifiedExpressions::EyeWideLeft as usize] =
@@ -492,9 +490,9 @@ impl UnifiedTrackingData {
             face_fb[FaceFb::LipStretcherL as usize];
 
         self.shapes[UnifiedExpressions::MouthDimpleLeft as usize] =
-            face_fb[FaceFb::DimplerL as usize];
+            (face_fb[FaceFb::DimplerL as usize] * 2.0).min(1.0);
         self.shapes[UnifiedExpressions::MouthDimpleRight as usize] =
-            face_fb[FaceFb::DimplerR as usize];
+            (face_fb[FaceFb::DimplerR as usize] * 2.0).min(1.0);
 
         self.shapes[UnifiedExpressions::MouthRaiserUpper as usize] =
             face_fb[FaceFb::ChinRaiserT as usize];
@@ -891,11 +889,15 @@ impl ExtTracking {
 
                         let Some(idx) = UnifiedExpressions::from_str(&main)
                             .map(|e| e as usize)
-                            .or_else(|_| CombinedExpression::from_str(&main).map(|e| UnifiedExpressions::COUNT+(e as usize)))
-                            .ok() else {
-                                warn!("Unknown expression: {}", &main);
-                                return;
-                            };
+                            .or_else(|_| {
+                                CombinedExpression::from_str(&main)
+                                    .map(|e| UnifiedExpressions::COUNT + (e as usize))
+                            })
+                            .ok()
+                        else {
+                            warn!("Unknown expression: {}", &main);
+                            return;
+                        };
 
                         let create = self.params[idx].is_none();
 
@@ -983,25 +985,25 @@ fn receive(sender: SyncSender<TrackingMessage>) {
                     };
                     message = TrackingMessage::EyesQuat(eyes_quat);
                 } else if id == *b"PoseHmd\0" {
-                    let Some(pose_head) = read_bin::<[f32;7]>(&mut cur) else {
+                    let Some(pose_head) = read_bin::<[f32; 7]>(&mut cur) else {
                         warn!("Failed to read PoseHmd message");
                         break;
                     };
                     message = TrackingMessage::PoseHead(Pose::from_arr(&pose_head));
                 } else if id == *b"PoseCnL\0" {
-                    let Some(pose_con_l) = read_bin::<[f32;7]>(&mut cur) else {
+                    let Some(pose_con_l) = read_bin::<[f32; 7]>(&mut cur) else {
                         warn!("Failed to read PoseCnL message");
                         break;
                     };
                     message = TrackingMessage::PoseConL(Pose::from_arr(&pose_con_l));
                 } else if id == *b"PoseCnR\0" {
-                    let Some(pose_con_r) = read_bin::<[f32;7]>(&mut cur) else {
+                    let Some(pose_con_r) = read_bin::<[f32; 7]>(&mut cur) else {
                         warn!("Failed to read PoseCnR message");
                         break;
                     };
                     message = TrackingMessage::PoseConR(Pose::from_arr(&pose_con_r));
                 } else if id == *b"HandSkL\0" {
-                    let Some(skel_l) = read_bin::<[f32; 26*7]>(&mut cur) else {
+                    let Some(skel_l) = read_bin::<[f32; 26 * 7]>(&mut cur) else {
                         warn!("Failed to read HandSkL message");
                         break;
                     };
@@ -1011,7 +1013,7 @@ fn receive(sender: SyncSender<TrackingMessage>) {
                     }
                     message = TrackingMessage::HandSkeL(poses);
                 } else if id == *b"HandSkR\0" {
-                    let Some(skel_r) = read_bin::<[f32; 26*7]>(&mut cur) else {
+                    let Some(skel_r) = read_bin::<[f32; 26 * 7]>(&mut cur) else {
                         warn!("Failed to read HandSkR message");
                         break;
                     };

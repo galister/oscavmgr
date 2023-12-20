@@ -83,9 +83,9 @@ impl ExtGogo {
     pub fn step(&self, parameters: &AvatarParameters, bundle: &mut OscBundle) {
         if let Some(OscType::Int(tracking)) = parameters.get(TRACKING_TYPE) {
             let want_loco = if 5 < *tracking {
-                OscType::Bool(false)
-            } else {
                 OscType::Bool(true)
+            } else {
+                OscType::Bool(false)
             };
 
             if parameters.get(LOCO_PARAM) != Some(&want_loco) {
