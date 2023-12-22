@@ -1,45 +1,21 @@
-use std::io::{Cursor, Read};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::str::FromStr;
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::Arc;
 use std::time::Duration;
-use std::{array, slice, thread};
+use std::{array, thread, usize};
 
 use super::bundle::AvatarBundle;
 use super::ext_oscjson::{MysteryParam, OscJsonNode};
 use super::AvatarParameters;
-use glam::{Quat, Vec2, Vec3};
+use alvr_events::{Event, EventType, TrackingEvent};
+use glam::Vec2;
 use log::{debug, info, warn};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rosc::{OscBundle, OscType};
 use strum::{EnumCount, EnumIter, EnumString, IntoStaticStr};
-
-enum TrackingMessage {
-    FaceFb([f32; 63]),
-    PoseHead(Pose),
-    PoseConL(Pose),
-    PoseConR(Pose),
-    HandSkeL([Pose; 26]),
-    HandSkeR([Pose; 26]),
-    EyesQuat([Quat; 2]),
-}
-
-#[derive(Clone, Copy, Default, Debug)]
-pub struct Pose {
-    pub orientation: Quat, // NB: default Quat is identity
-    pub position: Vec3,
-}
-
-impl Pose {
-    pub fn from_arr(arr: &[f32]) -> Self {
-        Self {
-            orientation: Quat::from_xyzw(arr[0], arr[1], arr[2], arr[3]),
-            position: Vec3::new(arr[4], arr[5], arr[6]),
-        }
-    }
-}
+use websocket::client::builder::ClientBuilder;
+use websocket::OwnedMessage;
 
 #[allow(unused)]
 #[repr(usize)]
@@ -157,31 +133,31 @@ pub enum UnifiedExpressions {
     MouthTightenerRight, // Squeezes the right side lips together horizontally and thickens them vertically slightly. Basis on the complex tightening action of the orbicularis oris muscle.
     MouthTightenerLeft, // Squeezes the right side lips together horizontally and thickens them vertically slightly. Basis on the complex tightening action of the orbicularis oris muscle.
 
-                        /*
-                        TongueOut, // Combined LongStep1 and LongStep2 into one shape, as it can be emulated in-animation
+    TongueOut, // Combined LongStep1 and LongStep2 into one shape, as it can be emulated in-animation
 
-                        // Based on SRanipal tracking standard's tongue tracking.
-                        TongueUp,    // Tongue points in an upward direction.
-                        TongueDown,  // Tongue points in an downward direction.
-                        TongueRight, // Tongue points in an rightward direction.
-                        TongueLeft,  // Tongue points in an leftward direction.
+    // Based on SRanipal tracking standard's tongue tracking.
+    TongueUp,    // Tongue points in an upward direction.
+    TongueDown,  // Tongue points in an downward direction.
+    TongueRight, // Tongue points in an rightward direction.
+    TongueLeft,  // Tongue points in an leftward direction.
 
-                        // Based on https://www.naun.org/main/NAUN/computers/2018/a042007-060.pdf
-                        TongueRoll,     // Rolls up the sides of the tongue into a 'hotdog bun' shape.
-                        TongueBendDown, // Pushes tip of the tongue below the rest of the tongue in an arch.
-                        TongueCurlUp,   // Pushes tip of the tongue above the rest of the tongue in an arch.
-                        TongueSquish,   // Tongue becomes thinner width-wise and slightly thicker height-wise.
-                        TongueFlat,     // Tongue becomes thicker width-wise and slightly thinner height-wise.
+    // Based on https://www.naun.org/main/NAUN/computers/2018/a042007-060.pdf
+    TongueRoll,     // Rolls up the sides of the tongue into a 'hotdog bun' shape.
+    TongueBendDown, // Pushes tip of the tongue below the rest of the tongue in an arch.
+    TongueCurlUp,   // Pushes tip of the tongue above the rest of the tongue in an arch.
+    TongueSquish,   // Tongue becomes thinner width-wise and slightly thicker height-wise.
+    TongueFlat,     // Tongue becomes thicker width-wise and slightly thinner height-wise.
 
-                        TongueTwistRight, // Tongue tip rotates clockwise from POV with the rest of the tongue following gradually.
-                        TongueTwistLeft, // Tongue tip rotates counter-clockwise from POV with the rest of the tongue following gradually.
+    TongueTwistRight, // Tongue tip rotates clockwise from POV with the rest of the tongue following gradually.
+    TongueTwistLeft, // Tongue tip rotates counter-clockwise from POV with the rest of the tongue following gradually.
 
-                        SoftPalateClose, // Visibly lowers the back of the throat (soft palate) inside the mouth to close off the throat.
-                        ThroatSwallow, // Visibly causes the Adam's apple to pull upward into the throat as if swallowing.
+                     /*
+                     SoftPalateClose, // Visibly lowers the back of the throat (soft palate) inside the mouth to close off the throat.
+                     ThroatSwallow, // Visibly causes the Adam's apple to pull upward into the throat as if swallowing.
 
-                        NeckFlexRight, // Flexes the Right side of the neck and face (causes the right corner of the face to stretch towards.)
-                        NeckFlexLeft, // Flexes the left side of the neck and face (causes the left corner of the face to stretch towards.)
-                        */
+                     NeckFlexRight, // Flexes the Right side of the neck and face (causes the right corner of the face to stretch towards.)
+                     NeckFlexLeft, // Flexes the left side of the neck and face (causes the left corner of the face to stretch towards.)
+                     */
 }
 
 #[allow(unused)]
@@ -247,6 +223,7 @@ const NUM_SHAPES: usize = UnifiedExpressions::COUNT + CombinedExpression::COUNT;
 
 #[allow(non_snake_case, unused)]
 #[repr(usize)]
+#[derive(EnumCount)]
 pub enum FaceFb {
     BrowLowererL,
     BrowLowererR,
@@ -311,6 +288,21 @@ pub enum FaceFb {
     UpperLidRaiserR,
     UpperLipRaiserL,
     UpperLipRaiserR,
+    Max,
+}
+
+#[allow(non_snake_case, unused)]
+#[repr(usize)]
+#[derive(EnumCount)]
+pub enum Face2Fb {
+    TongueTipInterdental = 63,
+    TongueTipAlveolar,
+    TongueFrontDorsalPalate,
+    TongueMidDorsalPalate,
+    TongueBackDorsalPalate,
+    TongueOut,
+    TongueRetreat,
+    Max,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -345,7 +337,15 @@ impl UnifiedTrackingData {
         }
     }
 
-    pub fn load_face(&mut self, face_fb: &[f32; 63]) {
+    pub fn load_face(&mut self, face_fb: &Vec<f32>) {
+        if face_fb.len() < FaceFb::Max as usize {
+            warn!(
+                "Face tracking data is too short: {} < {}",
+                face_fb.len(),
+                FaceFb::Max as usize
+            );
+            return;
+        }
         self.eye.left.openness = 1.
             - (face_fb[FaceFb::EyesClosedL as usize]) //+ face_fb[FaceFb::EyesClosedL as usize] * face_fb[FaceFb::LidTightenerL as usize])
                 .clamp(0.0, 1.0);
@@ -718,6 +718,13 @@ impl UnifiedTrackingData {
             - self.shapes[UnifiedExpressions::EyeSquintRight as usize]
             - self.shapes[UnifiedExpressions::BrowPinchRight as usize])
             .clamp(-1.0, 1.0);
+
+        if face_fb.len() >= Face2Fb::Max as usize {
+            self.shapes[UnifiedExpressions::TongueOut as usize] =
+                face_fb[Face2Fb::TongueOut as usize];
+            self.shapes[UnifiedExpressions::TongueCurlUp as usize] =
+                face_fb[Face2Fb::TongueTipAlveolar as usize];
+        }
     }
 
     pub fn apply_to_bundle(
@@ -738,19 +745,15 @@ impl UnifiedTrackingData {
 }
 
 pub struct ExtTracking {
-    pub hmd: Pose,
-    pub controllers: [Pose; 2],
-    pub hands: [Option<[Pose; 26]>; 2],
-    pub eyes: [Quat; 2],
+    pub latest: Box<TrackingEvent>,
     pub face: UnifiedTrackingData,
-    receiver: Receiver<TrackingMessage>,
+    receiver: Receiver<Box<TrackingEvent>>,
     params: [Option<MysteryParam>; NUM_SHAPES],
 }
 
 impl ExtTracking {
     pub fn new() -> Self {
-        let size = std::mem::size_of::<TrackingMessage>();
-        let (sender, receiver) = sync_channel(size * 32);
+        let (sender, receiver) = sync_channel(32);
 
         let default_combined = vec![
             CombinedExpression::BrowExpressionLeft,
@@ -769,7 +772,6 @@ impl ExtTracking {
             CombinedExpression::SmileSadLeft,
             CombinedExpression::SmileSadRight,
         ];
-
         let default_unified = vec![
             UnifiedExpressions::CheekPuffLeft,
             UnifiedExpressions::CheekPuffRight,
@@ -806,16 +808,21 @@ impl ExtTracking {
         }
 
         thread::spawn(move || {
-            receive(sender);
+            loop_receive(sender);
         });
 
         let me = Self {
             receiver,
             face: UnifiedTrackingData::new(),
-            hmd: Pose::default(),
-            controllers: [Pose::default(), Pose::default()],
-            hands: [None, None],
-            eyes: [Quat::default(), Quat::default()],
+            latest: Box::new(TrackingEvent {
+                head_motion: None,
+                controller_motions: [None, None],
+                hand_skeletons: [None, None],
+                eye_gazes: [None, None],
+                fb_face_expression: None,
+                htc_eye_expression: None,
+                htc_lip_expression: None,
+            }),
             params,
         };
         me.print_params();
@@ -825,51 +832,67 @@ impl ExtTracking {
 
     pub fn step(&mut self, parameters: &AvatarParameters, bundle: &mut OscBundle) {
         for tracking in self.receiver.try_iter() {
-            match tracking {
-                TrackingMessage::FaceFb(face_fb) => match parameters.get("Motion") {
-                    Some(OscType::Int(1)) => {}
-                    _ => {
-                        self.face.load_face(&face_fb);
-                    }
-                },
-                TrackingMessage::PoseHead(pose_head) => {
-                    self.hmd = pose_head;
+            if tracking.head_motion.is_some() {
+                self.latest.head_motion = tracking.head_motion;
+            }
+            if tracking.controller_motions[0].is_some() {
+                self.latest.controller_motions[0] = tracking.controller_motions[0];
+            }
+            if tracking.controller_motions[1].is_some() {
+                self.latest.controller_motions[1] = tracking.controller_motions[1];
+            }
+            if tracking.hand_skeletons[0].is_some() {
+                self.latest.hand_skeletons[0] = tracking.hand_skeletons[0];
+            }
+            if tracking.hand_skeletons[1].is_some() {
+                self.latest.hand_skeletons[1] = tracking.hand_skeletons[1];
+            }
+            if let Some(OscType::Int(1)) = parameters.get("Motion") {
+            } else {
+                if tracking.eye_gazes[0].is_some() {
+                    self.latest.eye_gazes[0] = tracking.eye_gazes[0];
                 }
-                TrackingMessage::PoseConL(pose_con_l) => {
-                    self.controllers[0] = pose_con_l;
+                if tracking.eye_gazes[1].is_some() {
+                    self.latest.eye_gazes[1] = tracking.eye_gazes[1];
                 }
-                TrackingMessage::PoseConR(pose_con_r) => {
-                    self.controllers[1] = pose_con_r;
+                if let Some(fb_face) = tracking.fb_face_expression {
+                    self.face.load_face(&fb_face);
+                    self.latest.fb_face_expression = Some(fb_face);
                 }
-                TrackingMessage::HandSkeL(skel_l) => {
-                    self.hands[0] = Some(skel_l);
-                }
-                TrackingMessage::HandSkeR(skel_r) => {
-                    self.hands[1] = Some(skel_r);
-                }
-                TrackingMessage::EyesQuat(eyes_quat) => match parameters.get("Motion") {
-                    Some(OscType::Int(1)) => {}
-                    _ => {
-                        self.eyes = eyes_quat;
-                    }
-                },
+                // HTC: ignored
             }
         }
 
         self.face.apply_to_bundle(&self.params, bundle);
 
-        let left_euler = self.eyes[0].to_euler(glam::EulerRot::ZXY);
-        let right_euler = self.eyes[1].to_euler(glam::EulerRot::ZXY);
-
-        bundle.send_tracking(
-            "/tracking/eye/LeftRightPitchYaw",
-            vec![
-                OscType::Float(-left_euler.1.to_degrees()),
-                OscType::Float(-left_euler.2.to_degrees()),
-                OscType::Float(-right_euler.1.to_degrees()),
-                OscType::Float(-right_euler.2.to_degrees()),
-            ],
-        );
+        if let (Some(left_euler), Some(right_euler)) = (
+            self.latest.eye_gazes[0]
+                .as_ref()
+                .map(|g| g.orientation.to_euler(glam::EulerRot::ZXY)),
+            self.latest.eye_gazes[1]
+                .as_ref()
+                .map(|g| g.orientation.to_euler(glam::EulerRot::ZXY)),
+        ) {
+            if let Some(OscType::Bool(true)) = parameters.get("EyeRayCast") {
+                bundle.send_tracking(
+                    "/tracking/eye/CenterPitchYaw",
+                    vec![
+                        OscType::Float(-((left_euler.1 + right_euler.1) * 0.5).to_degrees()),
+                        OscType::Float(-((left_euler.2 + right_euler.2) * 0.5).to_degrees()),
+                    ],
+                );
+            } else {
+                bundle.send_tracking(
+                    "/tracking/eye/LeftRightPitchYaw",
+                    vec![
+                        OscType::Float(-left_euler.1.to_degrees()),
+                        OscType::Float(-left_euler.2.to_degrees()),
+                        OscType::Float(-right_euler.1.to_degrees()),
+                        OscType::Float(-right_euler.2.to_degrees()),
+                    ],
+                );
+            }
+        }
     }
 
     pub fn osc_json(&mut self, root_node: &OscJsonNode) {
@@ -954,107 +977,77 @@ impl ExtTracking {
     }
 }
 
-fn receive(sender: SyncSender<TrackingMessage>) {
-    let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
-    let listener = UdpSocket::bind(SocketAddr::new(ip, 0xA1F7)).unwrap();
-    listener.connect("0.0.0.0:0").expect("listener connect");
-
-    let mut buf = [0u8; 1500];
-
-    info!(
-        "Listening for ALVR-VRCFT messages on {}",
-        listener.local_addr().unwrap()
-    );
-
+fn loop_receive(mut sender: SyncSender<Box<TrackingEvent>>) {
+    let mut system = sysinfo::System::new();
     loop {
-        if let Ok(size) = listener.recv(&mut buf) {
-            let mut cur = Cursor::new(&buf[..size]);
-            let mut id = [0u8; 8];
-            while let Ok(()) = cur.read_exact(&mut id) {
-                let message: TrackingMessage;
-                if id == *b"FaceFb\0\0" {
-                    let Some(face_fb) = read_bin::<[f32; 63]>(&mut cur) else {
-                        warn!("Failed to read FaceFb message");
-                        break;
-                    };
-                    message = TrackingMessage::FaceFb(face_fb);
-                } else if id == *b"EyesQuat" {
-                    let Some(eyes_quat) = read_bin::<[Quat; 2]>(&mut cur) else {
-                        warn!("Failed to read EyesQuat message");
-                        break;
-                    };
-                    message = TrackingMessage::EyesQuat(eyes_quat);
-                } else if id == *b"PoseHmd\0" {
-                    let Some(pose_head) = read_bin::<[f32; 7]>(&mut cur) else {
-                        warn!("Failed to read PoseHmd message");
-                        break;
-                    };
-                    message = TrackingMessage::PoseHead(Pose::from_arr(&pose_head));
-                } else if id == *b"PoseCnL\0" {
-                    let Some(pose_con_l) = read_bin::<[f32; 7]>(&mut cur) else {
-                        warn!("Failed to read PoseCnL message");
-                        break;
-                    };
-                    message = TrackingMessage::PoseConL(Pose::from_arr(&pose_con_l));
-                } else if id == *b"PoseCnR\0" {
-                    let Some(pose_con_r) = read_bin::<[f32; 7]>(&mut cur) else {
-                        warn!("Failed to read PoseCnR message");
-                        break;
-                    };
-                    message = TrackingMessage::PoseConR(Pose::from_arr(&pose_con_r));
-                } else if id == *b"HandSkL\0" {
-                    let Some(skel_l) = read_bin::<[f32; 26 * 7]>(&mut cur) else {
-                        warn!("Failed to read HandSkL message");
-                        break;
-                    };
-                    let mut poses: [Pose; 26] = Default::default();
-                    for (i, chunk) in skel_l.chunks_exact(7).enumerate() {
-                        poses[i] = Pose::from_arr(chunk);
-                    }
-                    message = TrackingMessage::HandSkeL(poses);
-                } else if id == *b"HandSkR\0" {
-                    let Some(skel_r) = read_bin::<[f32; 26 * 7]>(&mut cur) else {
-                        warn!("Failed to read HandSkR message");
-                        break;
-                    };
-                    let mut poses: [Pose; 26] = Default::default();
-                    for (i, chunk) in skel_r.chunks_exact(7).enumerate() {
-                        poses[i] = Pose::from_arr(chunk);
-                    }
-                    message = TrackingMessage::HandSkeR(poses);
-                } else {
-                    warn!("Unknown tracking message type: {:?}", id);
-                    break;
-                };
-                debug!("Received tracking message: {:?}", id);
-
-                match sender.try_send(message) {
-                    Ok(()) => {}
-                    Err(TrySendError::Full(_)) => {
-                        debug!("Tracking message queue full");
-                        break;
-                    }
-                    Err(TrySendError::Disconnected(_)) => {
-                        warn!("Tracking message queue disconnected");
-                        return;
-                    }
-                }
-            }
+        if let Some(()) = receive_until_err(&mut sender, &mut system) {
+            break;
+        } else {
+            thread::sleep(Duration::from_millis(5000));
         }
-        thread::sleep(Duration::from_millis(1));
     }
 }
 
-fn read_bin<T>(cursor: &mut Cursor<&[u8]>) -> Option<T> {
-    let size = std::mem::size_of::<T>();
-    unsafe {
-        let mut t = std::mem::zeroed();
-        let buf = slice::from_raw_parts_mut(&mut t as *mut _ as *mut u8, size);
-        let Ok(()) = cursor.read_exact(buf) else {
-            warn!("Failed to read {} message", std::any::type_name::<T>());
-            return None;
-        };
-        Some(t)
+const VR_PROCESSES: [&str; 6] = [
+    "vrdashboard",
+    "vrcompositor",
+    "vrserver",
+    "vrmonitor",
+    "vrwebhelper",
+    "vrstartup",
+];
+
+fn receive_until_err(
+    sender: &mut SyncSender<Box<TrackingEvent>>,
+    system: &mut sysinfo::System,
+) -> Option<()> {
+    let mut wc = ClientBuilder::new("ws://127.0.0.1:8082/api/events")
+        .ok()?
+        .connect_insecure()
+        .ok()?;
+
+    loop {
+        match wc.recv_message().ok()? {
+            OwnedMessage::Text(text) => {
+                match serde_json::from_str::<Event>(&text) {
+                    Ok(msg) => {
+                        match msg.event_type {
+                            EventType::ServerRequestsSelfRestart => {
+                                warn!("ALVR: Server requested self restart");
+                                // kill steamvr processes and let auto-restart handle it
+                                system.refresh_processes();
+                                system.processes().values().for_each(|p| {
+                                    for vrp in VR_PROCESSES.iter() {
+                                        if p.name().contains(vrp) {
+                                            p.kill();
+                                        }
+                                    }
+                                });
+                                return Some(());
+                            }
+                            EventType::Tracking(tracking) => {
+                                if let Err(e) = sender.try_send(tracking) {
+                                    debug!("Failed to send tracking message: {}", e);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to parse tracking message: {}", e);
+                    }
+                }
+            }
+            OwnedMessage::Binary(_) => {
+                warn!("Received binary message");
+            }
+            OwnedMessage::Ping(_) => {}
+            OwnedMessage::Pong(_) => {}
+            OwnedMessage::Close(_) => {
+                warn!("ALVR Connection closed");
+                return None;
+            }
+        }
     }
 }
 
