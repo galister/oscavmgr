@@ -869,6 +869,13 @@ impl ExtTracking {
             .as_ref()
             .map(|g| g.orientation.to_euler(glam::EulerRot::ZXY))
         {
+            if self.params[CombinedExpression::EyeLidLeft as usize].is_none() {
+                bundle.send_tracking(
+                    "/tracking/eye/EyesClosedAmount",
+                    vec![OscType::Float(1.0 - self.face.eye.left.openness)],
+                );
+            }
+
             let right_euler = self.latest.eye_gazes[1]
                 .as_ref()
                 .map_or(left_euler, |g| g.orientation.to_euler(glam::EulerRot::ZXY));
