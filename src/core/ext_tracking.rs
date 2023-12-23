@@ -865,14 +865,14 @@ impl ExtTracking {
 
         self.face.apply_to_bundle(&self.params, bundle);
 
-        if let (Some(left_euler), Some(right_euler)) = (
-            self.latest.eye_gazes[0]
+        if let Some(left_euler) = self.latest.eye_gazes[0]
+            .as_ref()
+            .map(|g| g.orientation.to_euler(glam::EulerRot::ZXY))
+        {
+            let right_euler = self.latest.eye_gazes[1]
                 .as_ref()
-                .map(|g| g.orientation.to_euler(glam::EulerRot::ZXY)),
-            self.latest.eye_gazes[1]
-                .as_ref()
-                .map(|g| g.orientation.to_euler(glam::EulerRot::ZXY)),
-        ) {
+                .map_or(left_euler, |g| g.orientation.to_euler(glam::EulerRot::ZXY));
+
             if let Some(OscType::Bool(true)) = parameters.get("EyeRayCast") {
                 bundle.send_tracking(
                     "/tracking/eye/CenterPitchYaw",
