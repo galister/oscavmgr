@@ -2,7 +2,8 @@ use std::str::FromStr;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::Arc;
 use std::time::Duration;
-use std::{array, thread, usize};
+use std::{array, thread, usize,
+    net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket}};
 
 use super::bundle::AvatarBundle;
 use super::ext_oscjson::{MysteryParam, OscJsonNode};
@@ -12,7 +13,7 @@ use glam::Vec2;
 use log::{debug, info, warn};
 use once_cell::sync::Lazy;
 use regex::Regex;
-use rosc::{OscBundle, OscType};
+use rosc::{OscBundle, OscType, OscPacket};
 use strum::{EnumCount, EnumIter, EnumString, IntoStaticStr};
 use websocket::client::builder::ClientBuilder;
 use websocket::OwnedMessage;
@@ -337,6 +338,10 @@ impl UnifiedTrackingData {
         }
     }
 
+    pub fn load_single_unified_expression(&mut self, param: UnifiedExpressions, value: f32){
+        self.shapes[param as usize] = value;
+    }
+
     pub fn load_face(&mut self, face_fb: &Vec<f32>) {
         if face_fb.len() < FaceFb::Max as usize {
             warn!(
@@ -507,6 +512,16 @@ impl UnifiedTrackingData {
         self.shapes[UnifiedExpressions::MouthTightenerLeft as usize] =
             face_fb[FaceFb::LipTightenerL as usize];
 
+        if face_fb.len() >= Face2Fb::Max as usize {
+            self.shapes[UnifiedExpressions::TongueOut as usize] =
+                face_fb[Face2Fb::TongueOut as usize];
+            self.shapes[UnifiedExpressions::TongueCurlUp as usize] =
+                face_fb[Face2Fb::TongueTipAlveolar as usize];
+        }    
+        self.calc_combined();
+    }
+
+    pub fn calc_combined(&mut self) {
         // Combined
         let z = UnifiedExpressions::COUNT;
         self.shapes[z + CombinedExpression::EyeLidLeft as usize] = self.eye.left.openness * 0.75
@@ -719,12 +734,6 @@ impl UnifiedTrackingData {
             - self.shapes[UnifiedExpressions::BrowPinchRight as usize])
             .clamp(-1.0, 1.0);
 
-        if face_fb.len() >= Face2Fb::Max as usize {
-            self.shapes[UnifiedExpressions::TongueOut as usize] =
-                face_fb[Face2Fb::TongueOut as usize];
-            self.shapes[UnifiedExpressions::TongueCurlUp as usize] =
-                face_fb[Face2Fb::TongueTipAlveolar as usize];
-        }
     }
 
     pub fn apply_to_bundle(
@@ -748,12 +757,28 @@ pub struct ExtTracking {
     pub latest: Box<TrackingEvent>,
     pub face: UnifiedTrackingData,
     receiver: Receiver<Box<TrackingEvent>>,
+    babble_receiver: Receiver<Box<BabbleEvent>>,
     params: [Option<MysteryParam>; NUM_SHAPES],
+}
+
+struct BabbleEvent{
+    pub expression: UnifiedExpressions,
+    pub value: f32
+}
+
+impl BabbleEvent{
+    pub fn new() -> Self{
+        Self{
+            expression: UnifiedExpressions::EyeSquintLeft,
+            value: 0.0
+        }
+    }
 }
 
 impl ExtTracking {
     pub fn new() -> Self {
         let (sender, receiver) = sync_channel(32);
+        let (babble_sender, babble_receiver) = sync_channel(256);
 
         let default_combined = vec![
             CombinedExpression::BrowExpressionLeft,
@@ -810,9 +835,13 @@ impl ExtTracking {
         thread::spawn(move || {
             loop_receive(sender);
         });
+        thread::spawn(move || {
+            loop_receive_osc(babble_sender);
+        });
 
         let me = Self {
             receiver,
+            babble_receiver,
             face: UnifiedTrackingData::new(),
             latest: Box::new(TrackingEvent {
                 head_motion: None,
@@ -862,6 +891,11 @@ impl ExtTracking {
                 // HTC: ignored
             }
         }
+
+        for babble in self.babble_receiver.try_iter(){
+            self.face.load_single_unified_expression(babble.expression, babble.value)
+        }
+        self.face.calc_combined();
 
         self.face.apply_to_bundle(&self.params, bundle);
 
@@ -993,6 +1027,194 @@ fn loop_receive(mut sender: SyncSender<Box<TrackingEvent>>) {
             thread::sleep(Duration::from_millis(5000));
         }
     }
+}
+
+fn loop_receive_osc(mut sender: SyncSender<Box<BabbleEvent>>) {
+    loop {
+        if let Some(()) = receive_babble_osc(&mut sender) {
+            break;
+        } else {
+            thread::sleep(Duration::from_millis(5000));
+        }
+    }
+}
+
+fn receive_babble_osc(sender: &mut SyncSender<Box<BabbleEvent>>) -> Option<()>{
+    let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+    let listener =
+        UdpSocket::bind(SocketAddr::new(ip, 8888)).expect("bind listener socket");  // yaay, more magic numbers! (ProjectBabble default OSC port)
+
+    let mut buf = [0u8; rosc::decoder::MTU];
+    loop {
+        if let Ok((size, _addr)) = listener.recv_from(&mut buf) {
+            if let Ok((_, OscPacket::Message(packet))) = rosc::decoder::decode_udp(&buf[..size])
+            {
+                //info!("Received Babble OSC Message at address {} {:?}", packet.addr, packet.args);
+                if packet.args.len() > 2{
+                    warn!("Got Babble OSC Message with 2+ args, only using the first one (this is weird)");
+                }
+                if packet.args.len() < 1{
+                    warn!("Babble OSC Message has no args?");
+                } else {
+                    if let OscType::Float(x) = packet.args[0]{
+                        if let Some(index) = get_unified_expression_from_str(packet.addr){
+                            // I have no idea if this is a good way to do it or not, probably not
+                            let mut event = Box::new(BabbleEvent::new());
+                            event.expression = index;
+                            event.value = x;
+                            if let Err(e) = sender.try_send(event) {
+                                warn!("Failed to send babble message: {}", e);
+                            }
+                        } else {
+                        }
+                    } else {
+                        warn!("Babble OSC: Unsupported arg {:?}", packet.args[0]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn get_unified_expression_from_str(addr : String ) -> Option<UnifiedExpressions>{
+    if addr == "/cheekPuffLeft"{
+        return Some(UnifiedExpressions::CheekPuffLeft);
+    }
+    if addr == "/cheekPuffRight"{
+        return Some(UnifiedExpressions::CheekPuffRight);
+    }
+    if addr == "/cheekSuckLeft"{
+        return Some(UnifiedExpressions::CheekSuckLeft);
+    }
+    if addr == "/cheekSuckRight"{
+        return Some(UnifiedExpressions::CheekSuckRight);
+    }
+    if addr == "/jawOpen"{
+        return Some(UnifiedExpressions::JawOpen);
+    }
+    if addr == "/jawForward"{
+        return Some(UnifiedExpressions::JawForward);
+    }
+    if addr == "/jawLeft"{
+        return Some(UnifiedExpressions::JawLeft);
+    }
+    if addr == "/jawRight"{
+        return Some(UnifiedExpressions::JawRight);
+    }
+    if addr == "/noseSneerLeft"{
+        return Some(UnifiedExpressions::NoseSneerLeft);
+    }
+    if addr == "/noseSneerRight"{
+        return Some(UnifiedExpressions::NoseSneerRight);
+    }
+    if addr == "/mouthFunnel"{
+        return Some(UnifiedExpressions::LipFunnelLowerLeft);
+    }
+    if addr == "/mouthPucker"{
+        return Some(UnifiedExpressions::LipPuckerLowerLeft);
+    }
+    if addr == "/mouthLeft"{
+        return Some(UnifiedExpressions::MouthPressLeft);
+    }
+    if addr == "/mouthRight"{
+        return Some(UnifiedExpressions::MouthPressRight);
+    }
+    if addr == "/mouthRollUpper"{
+        return Some(UnifiedExpressions::LipSuckUpperLeft);
+    }
+    if addr == "/mouthRollLower"{
+        return Some(UnifiedExpressions::LipSuckLowerLeft);
+    }
+    if addr == "/mouthShrugUpper"{
+        return Some(UnifiedExpressions::MouthRaiserUpper);
+    }
+    if addr == "/mouthShrugLower"{
+        return Some(UnifiedExpressions::MouthRaiserLower);
+    }
+    if addr == "/mouthClose"{
+        return Some(UnifiedExpressions::MouthClosed);
+    }
+    if addr == "/mouthSmileLeft"{
+        return Some(UnifiedExpressions::MouthCornerPullLeft);
+    }
+    if addr == "/mouthSmileRight"{
+        return Some(UnifiedExpressions::MouthCornerPullRight);
+    }
+    if addr == "/mouthFrownLeft"{
+        return Some(UnifiedExpressions::MouthFrownLeft);
+    }
+    if addr == "/mouthFrownRight"{
+        return Some(UnifiedExpressions::MouthFrownRight);
+    }
+    if addr == "/mouthDimpleLeft"{
+        return Some(UnifiedExpressions::MouthDimpleLeft);
+    }
+    if addr == "/mouthDimpleRight"{
+        return Some(UnifiedExpressions::MouthDimpleRight);
+    }
+    if addr == "/mouthUpperUpLeft"{
+        return Some(UnifiedExpressions::MouthUpperUpLeft);
+    }
+    if addr == "/mouthUpperUpRight"{
+        return Some(UnifiedExpressions::MouthUpperUpRight);
+    }
+    if addr == "/mouthLowerDownLeft"{
+        return Some(UnifiedExpressions::MouthLowerDownLeft);
+    }
+    if addr == "/mouthLowerDownRight"{
+        return Some(UnifiedExpressions::MouthLowerDownRight);
+    }
+    if addr == "/mouthStretchLeft"{
+        return Some(UnifiedExpressions::MouthStretchLeft);
+    }
+    if addr == "/mouthStretchRight"{
+        return Some(UnifiedExpressions::MouthStretchRight);
+    }
+    if addr == "/tongueOut"{
+        return Some(UnifiedExpressions::TongueOut);
+    }
+    if addr == "/tongueUp"{
+        return Some(UnifiedExpressions::TongueUp);
+    }
+    if addr == "/tongueDown"{
+        return Some(UnifiedExpressions::TongueDown);
+    }
+    if addr == "/tongueLeft"{
+        return Some(UnifiedExpressions::TongueLeft);
+    }
+    if addr == "/tongueRight"{
+        return Some(UnifiedExpressions::TongueRight);
+    }
+    if addr == "/tongueRoll"{
+        return Some(UnifiedExpressions::TongueRoll);
+    }
+    if addr == "/tongueBendDown"{
+        return Some(UnifiedExpressions::TongueBendDown);
+    }
+    if addr == "/tongueCurlUp"{
+        return Some(UnifiedExpressions::TongueCurlUp);
+    }
+    if addr == "/tongueSquish"{
+        return Some(UnifiedExpressions::TongueSquish);
+    }
+    if addr == "/tongueFlat"{
+        return Some(UnifiedExpressions::TongueFlat);
+    }
+    if addr == "/tongueTwistLeft"{
+        return Some(UnifiedExpressions::TongueTwistLeft);
+    }
+    if addr == "/tongueTwistRight"{
+        return Some(UnifiedExpressions::TongueTwistRight);
+    }
+    
+    if addr == "/mouthPressLeft"{
+        return Some(UnifiedExpressions::MouthPressLeft);
+    }
+    if addr == "/mouthPressRight"{
+        return Some(UnifiedExpressions::MouthPressRight);
+    }
+    warn!("Babble OSC address {} not implemented!", addr);
+    return None;
 }
 
 const VR_PROCESSES: [&str; 6] = [
