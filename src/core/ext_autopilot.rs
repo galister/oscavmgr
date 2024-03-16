@@ -8,7 +8,7 @@ use std::{
     },
 };
 
-use glam::Vec3;
+use alvr_common::glam::Vec3;
 use log::info;
 use rosc::{OscBundle, OscType};
 
@@ -87,10 +87,12 @@ static COUNTDOWN: AtomicI32 = AtomicI32::new(0);
 fn avatar_flight(parameters: &AvatarParameters, tracking: &ExtTracking, bundle: &mut OscBundle) {
     const FLIGHT_INTS: Range<i32> = 120..125;
 
-    let (Some(head), [Some(left), Some(right)]) = (
-        tracking.latest.head_motion.as_ref(),
-        tracking.latest.controller_motions.as_ref(),
-    ) else {
+    if tracking.latest.device_motions.len() < 3 {
+        return;
+    }
+
+    let [(_, ref head), (_, ref left), (_, ref right)] = tracking.latest.device_motions[0..3]
+    else {
         return;
     };
 
@@ -187,55 +189,57 @@ pub fn autopilot_step(
         let dot_left = palm_left.dot(to_right);
         let dot_right = palm_right.dot(to_left);
 
-        if let [Some(left_con), Some(right_con)] = tracking.latest.controller_motions {
-            if (left_con.pose.position - right_con.pose.position).length() < 0.2
-                && dot_left < -0.8
-                && dot_right < -0.8
-            {
-                let deg = tracking.face.eye.right.gaze.x.atan().to_degrees();
-                if !(-10. ..=20.).contains(&deg) {
-                    look_horizontal = (deg * 0.02).min(1.);
-                }
-
-                let deg = tracking.face.eye.right.gaze.y.atan().to_degrees();
-                if deg > 15. && !JUMPED.load(std::sync::atomic::Ordering::Relaxed) {
-                    bundle.send_input_button("Jump", true);
-                    JUMPED.store(true, std::sync::atomic::Ordering::Relaxed);
-                } else if JUMPED.load(std::sync::atomic::Ordering::Relaxed) {
-                    bundle.send_input_button("Jump", false);
-                    JUMPED.store(false, std::sync::atomic::Ordering::Relaxed);
-                }
-
-                let puff = tracking.face.shapes[UnifiedExpressions::CheekPuffLeft as usize]
-                    + tracking.face.shapes[UnifiedExpressions::CheekPuffRight as usize];
-
-                let suck = tracking.face.shapes[UnifiedExpressions::CheekSuckLeft as usize]
-                    + tracking.face.shapes[UnifiedExpressions::CheekSuckRight as usize];
-
-                if puff > 0.5 {
-                    vertical = (puff * 0.6).min(1.0);
-                } else if suck > 0.5 {
-                    vertical = -(suck * 0.6).min(1.0);
-                }
-
-                let brows = tracking.face.shapes[UnifiedExpressions::BrowInnerUpLeft as usize]
-                    + tracking.face.shapes[UnifiedExpressions::BrowInnerUpRight as usize]
-                    + tracking.face.shapes[UnifiedExpressions::BrowOuterUpLeft as usize]
-                    + tracking.face.shapes[UnifiedExpressions::BrowOuterUpRight as usize];
-
-                if brows < 2.0 {
-                    VOICE_LOCK.store(false, std::sync::atomic::Ordering::Relaxed);
-                }
-
-                if brows > 3.0 && !VOICE.load(std::sync::atomic::Ordering::Relaxed) {
-                    bundle.send_input_button("Voice", true);
-                    VOICE.store(true, std::sync::atomic::Ordering::Relaxed);
-                    VOICE_LOCK.store(true, std::sync::atomic::Ordering::Relaxed);
-                } else if VOICE.load(std::sync::atomic::Ordering::Relaxed)
-                    && !VOICE_LOCK.load(std::sync::atomic::Ordering::Relaxed)
+        if tracking.latest.device_motions.len() > 2 {
+            if let [(_, ref left_con), (_, ref right_con)] = tracking.latest.device_motions[1..3] {
+                if (left_con.pose.position - right_con.pose.position).length() < 0.2
+                    && dot_left < -0.8
+                    && dot_right < -0.8
                 {
-                    bundle.send_input_button("Voice", false);
-                    VOICE.store(false, std::sync::atomic::Ordering::Relaxed);
+                    let deg = tracking.face.eye.right.gaze.x.atan().to_degrees();
+                    if !(-10. ..=20.).contains(&deg) {
+                        look_horizontal = (deg * 0.02).min(1.);
+                    }
+
+                    let deg = tracking.face.eye.right.gaze.y.atan().to_degrees();
+                    if deg > 15. && !JUMPED.load(std::sync::atomic::Ordering::Relaxed) {
+                        bundle.send_input_button("Jump", true);
+                        JUMPED.store(true, std::sync::atomic::Ordering::Relaxed);
+                    } else if JUMPED.load(std::sync::atomic::Ordering::Relaxed) {
+                        bundle.send_input_button("Jump", false);
+                        JUMPED.store(false, std::sync::atomic::Ordering::Relaxed);
+                    }
+
+                    let puff = tracking.face.shapes[UnifiedExpressions::CheekPuffLeft as usize]
+                        + tracking.face.shapes[UnifiedExpressions::CheekPuffRight as usize];
+
+                    let suck = tracking.face.shapes[UnifiedExpressions::CheekSuckLeft as usize]
+                        + tracking.face.shapes[UnifiedExpressions::CheekSuckRight as usize];
+
+                    if puff > 0.5 {
+                        vertical = (puff * 0.6).min(1.0);
+                    } else if suck > 0.5 {
+                        vertical = -(suck * 0.6).min(1.0);
+                    }
+
+                    let brows = tracking.face.shapes[UnifiedExpressions::BrowInnerUpLeft as usize]
+                        + tracking.face.shapes[UnifiedExpressions::BrowInnerUpRight as usize]
+                        + tracking.face.shapes[UnifiedExpressions::BrowOuterUpLeft as usize]
+                        + tracking.face.shapes[UnifiedExpressions::BrowOuterUpRight as usize];
+
+                    if brows < 2.0 {
+                        VOICE_LOCK.store(false, std::sync::atomic::Ordering::Relaxed);
+                    }
+
+                    if brows > 3.0 && !VOICE.load(std::sync::atomic::Ordering::Relaxed) {
+                        bundle.send_input_button("Voice", true);
+                        VOICE.store(true, std::sync::atomic::Ordering::Relaxed);
+                        VOICE_LOCK.store(true, std::sync::atomic::Ordering::Relaxed);
+                    } else if VOICE.load(std::sync::atomic::Ordering::Relaxed)
+                        && !VOICE_LOCK.load(std::sync::atomic::Ordering::Relaxed)
+                    {
+                        bundle.send_input_button("Voice", false);
+                        VOICE.store(false, std::sync::atomic::Ordering::Relaxed);
+                    }
                 }
             }
         }
