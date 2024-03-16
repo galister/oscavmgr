@@ -1,0 +1,42 @@
+name: Make Release
+
+on:
+  push:
+    tags:
+      - 'v**'
+
+jobs:
+  make_release:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Prepare Environment
+        run: |
+          rustup update
+          
+      - name: Cargo Build
+        run: |
+          cargo build --release
+          chmod +x target/release/oscavmgr
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_KEY }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: OscAvMgr ${{ github.ref_name }}
+          draft: true
+          prerelease: false
+
+      - name: Upload AppImage
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_KEY }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./target/release/oscavmgr
+          asset_name: oscavmgr-${{ github.ref_name }}
+          asset_content_type: application/octet-stream
