@@ -188,7 +188,7 @@ impl AvatarOsc {
         if let Some(packet) = bundle.content.first() {
             match packet {
                 OscPacket::Message(..) => {
-                    rosc::encoder::encode(&packet)
+                    rosc::encoder::encode(packet)
                         .ok()
                         .and_then(|buf| self.send_upstream(&buf).ok());
                     bundle.content.remove(0);

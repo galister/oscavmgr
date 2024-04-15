@@ -79,14 +79,13 @@ impl ExtOscJson {
 
         resp.text()
             .ok()
-            .map(|json| match serde_json::from_str(&json) {
+            .and_then(|json| match serde_json::from_str(&json) {
                 Ok(root_node) => Some(root_node),
                 Err(e) => {
                     warn!("Failed to deserialize avatar json: {}", e);
                     None
                 }
             })
-            .flatten()
     }
 }
 
