@@ -87,10 +87,10 @@ impl AvatarOsc {
             let mut running = true;
 
             loop {
-                receiver.try_iter().last().map(|x| {
+                if let Some(x) = receiver.try_iter().last() {
                     info!("Self-drive: {}", x);
                     running = x;
-                });
+                }
                 if running {
                     let _ = lo.send(&[0u8; 1]);
                     thread::sleep(Duration::from_millis(11));
@@ -186,14 +186,11 @@ impl AvatarOsc {
         autopilot_step(parameters, &self.ext_tracking, &mut bundle);
 
         if let Some(packet) = bundle.content.first() {
-            match packet {
-                OscPacket::Message(..) => {
-                    rosc::encoder::encode(packet)
-                        .ok()
-                        .and_then(|buf| self.send_upstream(&buf).ok());
-                    bundle.content.remove(0);
-                }
-                _ => {}
+            if let OscPacket::Message(..) = packet {
+                rosc::encoder::encode(packet)
+                    .ok()
+                    .and_then(|buf| self.send_upstream(&buf).ok());
+                bundle.content.remove(0);
             }
         }
 

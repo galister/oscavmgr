@@ -130,10 +130,7 @@ impl ExtTracking {
             .and_then(|parameters| parameters.get("FT"))
             .and_then(|ft| ft.get("v2"))
             .and_then(|v2| {
-                let Some(contents) = &v2.contents else {
-                    return None;
-                };
-                contents.iter().for_each(|(name, node)| {
+                v2.contents.as_ref()?.iter().for_each(|(name, node)| {
                     if let Some(m) = FT_PARAMS_REGEX.captures(name) {
                         let main: Arc<str> = m[1].into();
 

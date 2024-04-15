@@ -348,8 +348,8 @@ impl UnifiedTrackingData {
         let mut dirty = Vec::new();
 
         if let Some(old_shapes) = self.old_shapes.as_ref() {
-            for i in 0..NUM_SHAPES {
-                if (self.shapes[i] - old_shapes[i]).abs() > 0.01 {
+            for (i, item) in old_shapes.iter().enumerate().take(NUM_SHAPES) {
+                if (self.shapes[i] - item).abs() > 0.01 {
                     dirty.push(i);
                 }
             }
