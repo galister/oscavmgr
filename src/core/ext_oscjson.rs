@@ -58,10 +58,8 @@ impl ExtOscJson {
             }
         }
 
-        if self.oscjson_addr.is_some() {
-            if notify_avatar {
-                self.avatar();
-            }
+        if self.oscjson_addr.is_some() && notify_avatar {
+            self.avatar();
         }
         notify_avatar
     }

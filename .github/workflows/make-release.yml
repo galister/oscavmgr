@@ -13,7 +13,7 @@ jobs:
       
       - name: Prepare Environment
         run: |
-          rustup update
+          rustup update stable
           
       - name: Cargo Build
         run: |
