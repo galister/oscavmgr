@@ -20,9 +20,6 @@ pub type UnifiedExpressionShape = f32;
 
 #[derive(Debug, Clone)]
 pub struct UnifiedTrackingData {
-    pub hmd: Option<Posef>,
-    pub controllers: [Option<Posef>; 2],
-    pub hands: [Option<Posef>; 2],
     pub eyes: [Option<Vec3>; 2],
     pub shapes: [UnifiedExpressionShape; NUM_SHAPES],
     old_shapes: Option<[UnifiedExpressionShape; NUM_SHAPES]>,
@@ -33,9 +30,6 @@ pub struct UnifiedTrackingData {
 impl Default for UnifiedTrackingData {
     fn default() -> Self {
         Self {
-            hmd: None,
-            controllers: [None, None],
-            hands: [None, None],
             eyes: [None, None],
             shapes: [0.0; NUM_SHAPES],
             old_shapes: None,
@@ -365,7 +359,7 @@ impl UnifiedTrackingData {
 
     pub fn apply_to_bundle(
         &mut self,
-        params: &[Option<MysteryParam>; NUM_SHAPES],
+        params: &mut [Option<MysteryParam>; NUM_SHAPES],
         bundle: &mut OscBundle,
     ) {
         if !self.expression_tracking {
@@ -378,9 +372,9 @@ impl UnifiedTrackingData {
         }
         //bundle.send_parameter("EyeTrackingActive", OscType::Bool(true));
 
-        for idx in self.dirty_shapes() {
-            if let Some(param) = &params[idx] {
-                param.send(self.shapes[idx], bundle)
+        for (idx, shape) in self.shapes.iter().enumerate() {
+            if let Some(param) = &mut params[idx] {
+                param.send(*shape, bundle);
             }
         }
         self.old_shapes = Some(self.shapes);
@@ -392,19 +386,18 @@ impl UnifiedTrackingData {
                     "/tracking/eye/EyesClosedAmount",
                     vec![OscType::Float(self.getu(UnifiedExpressions::EyeClosedLeft))],
                 );
-            } else {
-                let right_euler = self.eyes[1].unwrap_or(left_euler);
-
-                bundle.send_tracking(
-                    "/tracking/eye/LeftRightPitchYaw",
-                    vec![
-                        OscType::Float(-left_euler.y.to_degrees()),
-                        OscType::Float(-left_euler.z.to_degrees()),
-                        OscType::Float(-right_euler.y.to_degrees()),
-                        OscType::Float(-right_euler.z.to_degrees()),
-                    ],
-                );
             }
+            let right_euler = self.eyes[1].unwrap_or(left_euler);
+
+            bundle.send_tracking(
+                "/tracking/eye/LeftRightPitchYaw",
+                vec![
+                    OscType::Float(-left_euler.y.to_degrees()),
+                    OscType::Float(-left_euler.z.to_degrees()),
+                    OscType::Float(-right_euler.y.to_degrees()),
+                    OscType::Float(-right_euler.z.to_degrees()),
+                ],
+            );
         }
     }
 }

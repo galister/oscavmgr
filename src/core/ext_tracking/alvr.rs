@@ -1,7 +1,10 @@
 use std::{
-    sync::mpsc::{Receiver, SyncSender},
+    sync::{
+        mpsc::{Receiver, SyncSender},
+        Arc,
+    },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use alvr_common::{
@@ -9,16 +12,23 @@ use alvr_common::{
     DeviceMotion, Pose, HAND_LEFT_PATH, HAND_RIGHT_PATH, HEAD_PATH,
 };
 use anyhow::bail;
+use colored::{Color, Colorize};
 use glam::Vec3;
+use once_cell::sync::Lazy;
 use websocket_lite::{ClientBuilder, Message, Opcode};
 
-use super::unified::{Posef, UnifiedExpressions, UnifiedTrackingData, NUM_SHAPES};
+use crate::core::AppState;
+
+use super::unified::{UnifiedExpressions, UnifiedTrackingData, NUM_SHAPES};
+
+static STA_ON: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "ALVR".color(Color::Green)).into());
+static STA_OFF: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "ALVR".color(Color::Red)).into());
 
 #[derive(Default)]
 struct AlvrTrackingData {
     eye: [Option<Vec3>; 2],
-    head: Option<Posef>,
-    hands: [Option<Posef>; 2],
+    head: Option<Pose>,
+    hands: [Option<Pose>; 2],
     shapes: Option<[f32; NUM_SHAPES]>,
 }
 
@@ -26,7 +36,7 @@ impl AlvrTrackingData {
     #[inline(always)]
     pub fn setu(&mut self, exp: UnifiedExpressions, value: f32) {
         unsafe {
-            self.shapes.unwrap_unchecked()[exp as usize] = value;
+            self.shapes.as_mut().unwrap_unchecked()[exp as usize] = value;
         }
     }
 }
@@ -34,12 +44,17 @@ impl AlvrTrackingData {
 pub(super) struct AlvrReceiver {
     sender: SyncSender<Box<AlvrTrackingData>>,
     receiver: Receiver<Box<AlvrTrackingData>>,
+    last_received: Instant,
 }
 
 impl AlvrReceiver {
     pub fn new() -> Self {
         let (sender, receiver) = std::sync::mpsc::sync_channel(8);
-        Self { sender, receiver }
+        Self {
+            sender,
+            receiver,
+            last_received: Instant::now(),
+        }
     }
 
     pub fn start_loop(&self) {
@@ -49,7 +64,7 @@ impl AlvrReceiver {
         });
     }
 
-    pub fn receive(&self, data: &mut UnifiedTrackingData) {
+    pub fn receive(&mut self, data: &mut UnifiedTrackingData, state: &mut AppState) {
         for new_data in self.receiver.try_iter() {
             if let Some(new_left) = new_data.eye[0] {
                 data.eyes[0] = Some(new_left);
@@ -59,7 +74,33 @@ impl AlvrReceiver {
             }
             if let Some(new_shapes) = new_data.shapes {
                 data.shapes = new_shapes;
+                self.last_received = Instant::now();
             }
+
+            if let Some(head) = new_data.head {
+                let rot: glam::Quat = unsafe { std::mem::transmute(head.orientation) };
+                let pos: glam::Vec3 = unsafe { std::mem::transmute(head.position) };
+                state.tracking.head = glam::Affine3A::from_rotation_translation(rot, pos);
+                state.tracking.last_received = Instant::now();
+            }
+
+            if let Some(left_hand) = new_data.hands[0] {
+                let rot: glam::Quat = unsafe { std::mem::transmute(left_hand.orientation) };
+                let pos: glam::Vec3 = unsafe { std::mem::transmute(left_hand.position) };
+                state.tracking.left_hand = glam::Affine3A::from_rotation_translation(rot, pos);
+            }
+
+            if let Some(right_hand) = new_data.hands[1] {
+                let rot: glam::Quat = unsafe { std::mem::transmute(right_hand.orientation) };
+                let pos: glam::Vec3 = unsafe { std::mem::transmute(right_hand.position) };
+                state.tracking.right_hand = glam::Affine3A::from_rotation_translation(rot, pos);
+            }
+        }
+
+        if self.last_received.elapsed() < Duration::from_secs(1) {
+            state.status.add_item(STA_ON.clone());
+        } else {
+            state.status.add_item(STA_OFF.clone());
         }
     }
 }
@@ -135,8 +176,12 @@ fn receive_until_err(
                             }
                             alvr_events::EventType::Tracking(tracking) => {
                                 let mut data = AlvrTrackingData::default();
-                                load_devices(&tracking.device_motions, &mut data);
                                 load_gazes(&tracking.eye_gazes, &mut data);
+                                load_devices(
+                                    &tracking.device_motions,
+                                    &tracking.hand_skeletons,
+                                    &mut data,
+                                );
                                 if let Some(face_fb) = tracking.fb_face_expression {
                                     load_face(&face_fb, &mut data);
                                 }
@@ -159,45 +204,51 @@ fn receive_until_err(
     bail!("connection lost");
 }
 
+fn load_devices(
+    device_motions: &[(String, DeviceMotion)],
+    hand_skeletons: &[Option<[Pose; 31]>; 2],
+    data: &mut AlvrTrackingData,
+) {
+    if let Some(left_hand) = hand_skeletons[0] {
+        data.hands[0] = Some(left_hand[0]);
+    }
+    if let Some(right_hand) = hand_skeletons[0] {
+        data.hands[1] = Some(right_hand[0]);
+    }
+
+    let mut remain = 3;
+    for (name, motion) in device_motions {
+        if remain == 0 {
+            break;
+        }
+        match name.as_str() {
+            HEAD_PATH => {
+                data.head = Some(motion.pose);
+                remain -= 1;
+            }
+            HAND_LEFT_PATH => {
+                if data.hands[0].is_none() {
+                    data.hands[0] = Some(motion.pose);
+                }
+                remain -= 1;
+            }
+            HAND_RIGHT_PATH => {
+                if data.hands[1].is_none() {
+                    data.hands[1] = Some(motion.pose);
+                }
+                remain -= 1;
+            }
+            _ => {}
+        }
+    }
+}
+
 fn load_gazes(gazes: &[Option<Pose>; 2], data: &mut AlvrTrackingData) {
     if let Some(gaze) = gazes[0] {
         data.eye[0] = Some(quat_to_euler(gaze.orientation));
     }
     if let Some(gaze) = gazes[1] {
         data.eye[1] = Some(quat_to_euler(gaze.orientation));
-    }
-}
-
-fn load_devices(device_motions: &[(String, DeviceMotion)], data: &mut AlvrTrackingData) {
-    let mut found = 0;
-    for (name, motion) in device_motions {
-        if found == 3 {
-            break;
-        }
-        match name.as_str() {
-            HEAD_PATH => {
-                data.head = Some(Posef {
-                    position: unsafe { std::mem::transmute(motion.pose.position) },
-                    orientation: unsafe { std::mem::transmute(motion.pose.orientation) },
-                });
-                found += 1;
-            }
-            HAND_LEFT_PATH => {
-                data.hands[0] = Some(Posef {
-                    position: unsafe { std::mem::transmute(motion.pose.position) },
-                    orientation: unsafe { std::mem::transmute(motion.pose.orientation) },
-                });
-                found += 1;
-            }
-            HAND_RIGHT_PATH => {
-                data.hands[1] = Some(Posef {
-                    position: unsafe { std::mem::transmute(motion.pose.position) },
-                    orientation: unsafe { std::mem::transmute(motion.pose.orientation) },
-                });
-                found += 1;
-            }
-            _ => {}
-        }
     }
 }
 

@@ -89,29 +89,30 @@ impl ExtStorage {
         if Instant::now()
             .saturating_duration_since(self.last_tick)
             .as_millis()
-            > 250
+            < 250
         {
-            if self.ext_index != 0 {
-                self.int_index = 0;
-                debug!("ExtIndex {}", self.ext_index);
-                return;
-            }
+            return;
+        }
+        if self.ext_index != 0 {
+            self.int_index = 0;
+            debug!("ExtIndex {}", self.ext_index);
+            return;
+        }
 
-            if let Some(value) = self.next() {
-                self.last_tick = Instant::now();
-                debug!("Sending {} {}", self.int_index, value);
+        if let Some(value) = self.next() {
+            self.last_tick = Instant::now();
+            debug!("Sending {} {}", self.int_index, value);
 
-                bundle.send_parameter("IntIndex", OscType::Int(self.int_index as _));
-                bundle.send_parameter("IntValue", OscType::Float(value));
-            }
+            bundle.send_parameter("IntIndex", OscType::Int(self.int_index as _));
+            bundle.send_parameter("IntValue", OscType::Float(value));
+        }
 
-            if Instant::now()
-                .saturating_duration_since(self.last_save)
-                .as_secs()
-                > 300
-            {
-                self.save();
-            }
+        if Instant::now()
+            .saturating_duration_since(self.last_save)
+            .as_secs()
+            > 300
+        {
+            self.save();
         }
     }
 }

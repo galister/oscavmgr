@@ -15,7 +15,7 @@ use self::unified::{CombinedExpression, UnifiedExpressions, UnifiedTrackingData,
 
 use super::{
     ext_oscjson::{MysteryParam, OscJsonNode},
-    AvatarParameters,
+    AppState,
 };
 
 #[cfg(feature = "alvr")]
@@ -69,6 +69,8 @@ impl ExtTracking {
                 addresses: array::from_fn(|_| None),
                 neg_address: None,
                 num_bits: 0,
+                last_value: 0.,
+                last_bits: [false; 8],
             };
             params[UnifiedExpressions::COUNT + (e as usize)] = Some(new);
         }
@@ -81,6 +83,8 @@ impl ExtTracking {
                 addresses: array::from_fn(|_| None),
                 neg_address: None,
                 num_bits: 0,
+                last_value: 0.,
+                last_bits: [false; 8],
             };
             params[e as usize] = Some(new);
         }
@@ -102,21 +106,25 @@ impl ExtTracking {
         me
     }
 
-    pub fn step(&mut self, parameters: &AvatarParameters, bundle: &mut OscBundle) {
-        let motion = matches!(parameters.get("Motion"), Some(OscType::Int(1)));
-        let face_override = matches!(parameters.get("FaceFreeze"), Some(OscType::Bool(true)));
+    pub fn step(&mut self, state: &mut AppState, bundle: &mut OscBundle) {
+        let motion = matches!(state.params.get("Motion"), Some(OscType::Int(1)));
+        let face_override = matches!(state.params.get("FaceFreeze"), Some(OscType::Bool(true)));
 
         if motion ^ face_override {
-            self.alvr_receiver.receive(&mut self.data);
-            self.babble_receiver.receive(&mut self.data);
+            log::debug!("Freeze");
+        } else {
+            self.alvr_receiver.receive(&mut self.data, state);
+            self.babble_receiver
+                .receive(&mut self.data, &mut state.status);
             self.data.calc_combined();
         }
 
-        if matches!(parameters.get("FacePause"), Some(OscType::Bool(true))) {
+        if matches!(state.params.get("FacePause"), Some(OscType::Bool(true))) {
+            log::debug!("FacePause");
             return;
         }
 
-        self.data.apply_to_bundle(&self.params, bundle);
+        self.data.apply_to_bundle(&mut self.params, bundle);
     }
 
     pub fn osc_json(&mut self, root_node: &OscJsonNode) {
@@ -155,6 +163,8 @@ impl ExtTracking {
                                 addresses: array::from_fn(|_| None),
                                 neg_address: None,
                                 num_bits: 0,
+                                last_value: 0.,
+                                last_bits: [false; 8],
                             };
                             self.params[idx] = Some(new);
                         };
@@ -209,7 +219,7 @@ impl AlvrReceiver {
         Self
     }
     fn start_loop(&self) {}
-    fn receive(&self, _data: &mut UnifiedTrackingData) {}
+    fn receive(&self, _data: &mut UnifiedTrackingData, _: &mut AppState) {}
 }
 
 #[cfg(not(feature = "babble"))]
@@ -220,5 +230,5 @@ impl BabbleReceiver {
         Self
     }
     fn start_loop(&self) {}
-    fn receive(&self, _data: &mut UnifiedTrackingData) {}
+    fn receive(&self, _: &mut UnifiedTrackingData, _: &mut super::status::StatusBar) {}
 }

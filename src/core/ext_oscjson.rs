@@ -128,18 +128,28 @@ pub struct MysteryParam {
     pub addresses: [Option<Arc<str>>; 7],
     pub neg_address: Option<Arc<str>>,
     pub num_bits: usize,
+    pub last_value: f32,
+    pub last_bits: [bool; 8],
 }
 
 impl MysteryParam {
-    pub fn send(&self, value: f32, bundle: &mut OscBundle) {
+    pub fn send(&mut self, value: f32, bundle: &mut OscBundle) {
         if let Some(addr) = self.main_address.as_ref() {
+            if (value - self.last_value).abs() < 0.01 {
+                return;
+            }
             bundle.send_parameter(addr, OscType::Float(value));
+            self.last_value = value;
             return;
         }
 
         let mut value = value;
         if let Some(addr) = self.neg_address.as_ref() {
-            bundle.send_parameter(addr, OscType::Bool(value < 0.));
+            let send_val = value < 0.;
+            if self.last_bits[7] != send_val {
+                bundle.send_parameter(addr, OscType::Bool(send_val));
+                self.last_bits[7] = send_val;
+            }
             value = value.abs();
         } else if value < 0. {
             value = 0.;
@@ -153,7 +163,11 @@ impl MysteryParam {
             .take(self.num_bits)
             .for_each(|(idx, param)| {
                 if let Some(addr) = param.as_ref() {
-                    bundle.send_parameter(addr, OscType::Bool(value & (1 << idx) != 0));
+                    let send_val = value & (1 << idx) != 0;
+                    if self.last_bits[idx] != send_val {
+                        bundle.send_parameter(addr, OscType::Bool(send_val));
+                        self.last_bits[idx] = send_val;
+                    }
                 }
             });
     }

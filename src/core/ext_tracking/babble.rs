@@ -1,27 +1,39 @@
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
-    sync::mpsc::{sync_channel, Receiver, SyncSender},
+    sync::{
+        mpsc::{sync_channel, Receiver, SyncSender},
+        Arc,
+    },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
+use colored::{Color, Colorize};
 use once_cell::sync::Lazy;
 use rosc::{OscPacket, OscType};
 
-use crate::core::ext_tracking::unified::UnifiedExpressions;
+use crate::core::{ext_tracking::unified::UnifiedExpressions, status::StatusBar};
 
 use super::unified::UnifiedTrackingData;
+
+static STA_ON: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "BABBLE".color(Color::Green)).into());
+static STA_OFF: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "BABBLE".color(Color::Red)).into());
 
 pub(super) struct BabbleReceiver {
     sender: SyncSender<Box<BabbleEvent>>,
     receiver: Receiver<Box<BabbleEvent>>,
+    last_received: Instant,
 }
 
 impl BabbleReceiver {
     pub fn new() -> Self {
         let (sender, receiver) = sync_channel(128);
-        Self { sender, receiver }
+        Self {
+            sender,
+            receiver,
+            last_received: Instant::now(),
+        }
     }
 
     pub fn start_loop(&self) {
@@ -29,9 +41,16 @@ impl BabbleReceiver {
         thread::spawn(move || babble_loop(sender));
     }
 
-    pub fn receive(&self, data: &mut UnifiedTrackingData) {
+    pub fn receive(&mut self, data: &mut UnifiedTrackingData, status: &mut StatusBar) {
         for event in self.receiver.try_iter() {
             data.shapes[event.expression as usize] = event.value;
+            self.last_received = Instant::now();
+        }
+
+        if self.last_received.elapsed() < Duration::from_secs(1) {
+            status.add_item(STA_ON.clone());
+        } else {
+            status.add_item(STA_OFF.clone());
         }
     }
 }
