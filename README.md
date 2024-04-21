@@ -25,9 +25,9 @@ If you use a Pico 4 Pro:
 There is a helper software to handle OscQuery for us at [galister/VrcAdvert](https://github.com/galister/VrcAdvert).
 
 ```bash
-wget -O VrcAdvert https://github.com/galister/VrcAdvert/releases/download/v1.0.0/VrcAdvert
+wget -O VrcAdvert https://github.com/galister/VrcAdvert/releases/latest/download/VrcAdvert
 # change this link to babble if using babble
-wget -O oscavmgr https://github.com/galister/oscavmgr/releases/download/v0.3.0-1/oscavmgr-alvr-v0.3.0-1
+wget -O oscavmgr https://github.com/galister/oscavmgr/releases/latest/download/oscavmgr-alvr
 ```
 
 I recommend using this start script:
@@ -36,7 +36,7 @@ I recommend using this start script:
 
 trap 'jobs -p | xargs kill' EXIT
 
-./OscAvMgr 9402 9002 &
+./VrcAdvert 9402 9002 &
 ./oscavmgr
 ```
 
