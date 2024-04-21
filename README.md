@@ -28,6 +28,7 @@ There is a helper software to handle OscQuery for us at [galister/VrcAdvert](htt
 wget -O VrcAdvert https://github.com/galister/VrcAdvert/releases/latest/download/VrcAdvert
 # change this link to babble if using babble
 wget -O oscavmgr https://github.com/galister/oscavmgr/releases/latest/download/oscavmgr-alvr
+chmod +x VrcAdvert oscavmgr
 ```
 
 I recommend using this start script:
