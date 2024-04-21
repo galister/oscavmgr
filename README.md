@@ -47,9 +47,7 @@ cargo run --release
 
 ## VRC-Only: Autopilot
 
-Uses a combination of hand, face and eye tracking to allow you to move around in VRC without controllers. 
-
-To activate autopilot, hold up your hands in front of you, so that the palms are towards your face, and the pinky finger side of your hands are pressing together. (The thumbs should be pointing apart.)
+This activates when your HMD is in hand-tracking mode. The bottom of the terminal will change from `AP-OFF` to `MANUAL` when active.
 
 **Turn left-right**: Look at the left/right edge of your screen\
 **Jump**: Look at the top edge of your screen\
@@ -66,7 +64,7 @@ Pose save:
 - Saves the idle stand/crouch/prone pose between avatars.
 
 Quick-ascend:
-- While in Gogo flight mode, put both hands (controllers) up to ascend at a super-high speed.
+- While in Gogo flight mode, put both hands (controllers) above your head to ascend at a super-high speed.
 
 ## VRC-Only External Storage
 
