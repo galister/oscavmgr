@@ -38,7 +38,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./target/release/oscavmgr
-          asset_name: oscavmgr-alvr-${{ github.ref_name }}
+          asset_name: oscavmgr-alvr
           asset_content_type: application/octet-stream
 
       - name: Cargo Build Babble
@@ -53,6 +53,6 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./target/release/oscavmgr
-          asset_name: oscavmgr-babble-${{ github.ref_name }}
+          asset_name: oscavmgr-babble
           asset_content_type: application/octet-stream
 
