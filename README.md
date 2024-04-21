@@ -8,7 +8,11 @@ Pros vs VRCFT:
 
 Cons vs VRCFT:
 - Fine tuning of face tracking parameters can only be done in code
-- Only Quest Pro / Pico 4 Pro supported
+
+Supported:
+- Quest Pro
+- Pico 4 Pro (eye only)
+- Project Babble
 
 # Basic Setup
 
