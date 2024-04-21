@@ -24,11 +24,10 @@ If you use a Pico 4 Pro:
 
 There is a helper software to handle OscQuery for us at [galister/VrcAdvert](https://github.com/galister/VrcAdvert).
 
-VrcAdvert requires dotnet SDK 6.0!
-
 ```bash
-git clone https://github.com/galister/VrcAdvert.git
-git clone https://github.com/galister/oscavmgr.git
+wget -O VrcAdvert https://github.com/galister/VrcAdvert/releases/download/v1.0.0/VrcAdvert
+# change this link to babble if using babble
+wget -O oscavmgr https://github.com/galister/oscavmgr/releases/download/v0.3.0-1/oscavmgr-alvr-v0.3.0-1
 ```
 
 I recommend using this start script:
@@ -37,13 +36,9 @@ I recommend using this start script:
 
 trap 'jobs -p | xargs kill' EXIT
 
-cd VrcAdvert
-dotnet run OscAvMgr 9402 9002 &
-
-cd ../oscavmgr/
-cargo run --release
+./OscAvMgr 9402 9002 &
+./oscavmgr
 ```
-(you may need to replace `dotnet` with `dotnet-6.0` or `dotnet-6.0-bin` based on your distro)
 
 ## VRC-Only: Autopilot
 
