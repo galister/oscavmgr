@@ -15,11 +15,6 @@ jobs:
         run: |
           rustup update stable
           
-      - name: Cargo Build
-        run: |
-          cargo build --release
-          chmod +x target/release/oscavmgr
-
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -31,12 +26,33 @@ jobs:
           draft: true
           prerelease: false
 
-      - name: Upload AppImage
+      - name: Cargo Build ALVR
+        run: |
+          cargo build --no-default-features --features=alvr --release
+          chmod +x target/release/oscavmgr
+
+      - name: Upload ALVR
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_KEY }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./target/release/oscavmgr
-          asset_name: oscavmgr-${{ github.ref_name }}
+          asset_name: oscavmgr-alvr-${{ github.ref_name }}
           asset_content_type: application/octet-stream
+
+      - name: Cargo Build Babble
+        run: |
+          cargo build --no-default-features --features=babble --release
+          chmod +x target/release/oscavmgr
+
+      - name: Upload Babble
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_KEY }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./target/release/oscavmgr
+          asset_name: oscavmgr-babble-${{ github.ref_name }}
+          asset_content_type: application/octet-stream
+
