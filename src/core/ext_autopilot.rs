@@ -99,13 +99,11 @@ impl ExtAutoPilot {
                 status_set = true;
 
                 if let Some(eye) = tracking.data.eyes[0] {
-                    let deg_z = eye.z.atan().to_degrees();
-                    if !(-22. ..=30.).contains(&deg_z) {
-                        look_horizontal = (deg_z * -0.02).clamp(-1., 1.);
+                    if !(-0.6..=0.5).contains(&eye.z) {
+                        look_horizontal = -eye.z;
                     }
 
-                    let deg_y = eye.y.atan().to_degrees();
-                    if deg_y > 22. && !self.jumped {
+                    if eye.y > 0.4 && !self.jumped {
                         bundle.send_input_button("Jump", true);
                         self.jumped = true;
                     } else if self.jumped {
