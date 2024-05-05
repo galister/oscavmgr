@@ -89,9 +89,11 @@ To read a value:
 
 # Use with Resonite
 
-Enable this mod: [galister/EyeTrackVRResonite](https://github.com/galister/EyeTrackVRResonite)
+Enable this mod: [galister/EyeTrackVRResonite](https://github.com/galister/EyeTrackVRResonite) (This is a fork that supports both Eye + Face)
 
 With the mod enabled, simply start oscavmgr using `cargo run --release`.
+
+A set of DynamicValueVariables will be created for you. Use them to drive the blendshapes of your choice. (Network syncing is already handled for you).
 
 If you are starting up Resonite after using VRC, you will need to restart oscavmgr!
 
