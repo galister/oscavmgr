@@ -13,7 +13,7 @@ use colored::{Color, Colorize};
 use once_cell::sync::Lazy;
 use rosc::{OscPacket, OscType};
 
-use crate::core::{ext_tracking::unified::UnifiedExpressions, status::StatusBar};
+use crate::core::{ext_tracking::unified::UnifiedExpressions, AppState};
 
 use super::unified::UnifiedTrackingData;
 
@@ -41,16 +41,16 @@ impl BabbleReceiver {
         thread::spawn(move || babble_loop(sender));
     }
 
-    pub fn receive(&mut self, data: &mut UnifiedTrackingData, status: &mut StatusBar) {
+    pub fn receive(&mut self, data: &mut UnifiedTrackingData, state: &mut AppState) {
         for event in self.receiver.try_iter() {
             data.shapes[event.expression as usize] = event.value;
             self.last_received = Instant::now();
         }
 
         if self.last_received.elapsed() < Duration::from_secs(1) {
-            status.add_item(STA_ON.clone());
+            state.status.add_item(STA_ON.clone());
         } else {
-            status.add_item(STA_OFF.clone());
+            state.status.add_item(STA_OFF.clone());
         }
     }
 }

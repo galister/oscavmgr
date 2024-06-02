@@ -16,6 +16,37 @@ pub struct UnifiedEyeData {
     pub right: Option<Posef>,
 }
 
+pub type UnifiedShapes = [f32; NUM_SHAPES];
+
+pub trait UnifiedShapeAccessors {
+    fn getu(&self, exp: UnifiedExpressions) -> f32;
+    fn getc(&self, exp: CombinedExpression) -> f32;
+    fn setu(&mut self, exp: UnifiedExpressions, value: f32);
+    fn setc(&mut self, exp: CombinedExpression, value: f32);
+}
+
+impl UnifiedShapeAccessors for UnifiedShapes {
+    #[inline(always)]
+    fn getu(&self, exp: UnifiedExpressions) -> f32 {
+        self[exp as usize]
+    }
+
+    #[inline(always)]
+    fn getc(&self, exp: CombinedExpression) -> f32 {
+        self[UnifiedExpressions::COUNT + exp as usize]
+    }
+
+    #[inline(always)]
+    fn setu(&mut self, exp: UnifiedExpressions, value: f32) {
+        self[exp as usize] = value;
+    }
+
+    #[inline(always)]
+    fn setc(&mut self, exp: CombinedExpression, value: f32) {
+        self[UnifiedExpressions::COUNT + exp as usize] = value;
+    }
+}
+
 pub type UnifiedExpressionShape = f32;
 
 #[derive(Debug, Clone)]

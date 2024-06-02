@@ -11,6 +11,9 @@ use self::alvr::AlvrReceiver;
 #[cfg(feature = "babble")]
 use self::babble::BabbleReceiver;
 
+#[cfg(feature = "wivrn")]
+use self::wivrn::WivrnReceiver;
+
 use self::unified::{CombinedExpression, UnifiedExpressions, UnifiedTrackingData, NUM_SHAPES};
 
 use super::{
@@ -22,13 +25,18 @@ use super::{
 mod alvr;
 #[cfg(feature = "babble")]
 mod babble;
+#[cfg(any(feature = "alvr", feature = "wivrn"))]
+mod face2_fb;
 pub mod unified;
+#[cfg(feature = "wivrn")]
+mod wivrn;
 
 pub struct ExtTracking {
     pub data: UnifiedTrackingData,
     params: [Option<MysteryParam>; NUM_SHAPES],
     alvr_receiver: AlvrReceiver,
     babble_receiver: BabbleReceiver,
+    wivrn_receiver: WivrnReceiver,
 }
 
 impl ExtTracking {
@@ -95,11 +103,15 @@ impl ExtTracking {
         let babble_receiver = BabbleReceiver::new();
         babble_receiver.start_loop();
 
+        let wivrn_receiver = WivrnReceiver::new();
+        wivrn_receiver.start_loop();
+
         let me = Self {
             data: UnifiedTrackingData::default(),
             params,
             alvr_receiver,
             babble_receiver,
+            wivrn_receiver,
         };
         me.print_params();
 
@@ -114,8 +126,8 @@ impl ExtTracking {
             log::debug!("Freeze");
         } else {
             self.alvr_receiver.receive(&mut self.data, state);
-            self.babble_receiver
-                .receive(&mut self.data, &mut state.status);
+            self.wivrn_receiver.receive(&mut self.data, state);
+            self.babble_receiver.receive(&mut self.data, state);
             self.data.calc_combined(state);
         }
 
@@ -211,10 +223,8 @@ impl ExtTracking {
     }
 }
 
-#[cfg(not(feature = "alvr"))]
-struct AlvrReceiver;
-#[cfg(not(feature = "alvr"))]
-impl AlvrReceiver {
+struct DummyReceiver;
+impl DummyReceiver {
     fn new() -> Self {
         Self
     }
@@ -222,13 +232,11 @@ impl AlvrReceiver {
     fn receive(&self, _data: &mut UnifiedTrackingData, _: &mut AppState) {}
 }
 
+#[cfg(not(feature = "alvr"))]
+type AlvrReceiver = DummyReceiver;
+
 #[cfg(not(feature = "babble"))]
-struct BabbleReceiver;
-#[cfg(not(feature = "babble"))]
-impl BabbleReceiver {
-    fn new() -> Self {
-        Self
-    }
-    fn start_loop(&self) {}
-    fn receive(&self, _: &mut UnifiedTrackingData, _: &mut super::status::StatusBar) {}
-}
+type BabbleReceiver = DummyReceiver;
+
+#[cfg(not(feature = "wivrn"))]
+type WivrnReceiver = DummyReceiver;
