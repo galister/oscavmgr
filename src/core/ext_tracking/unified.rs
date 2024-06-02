@@ -433,6 +433,10 @@ pub const NUM_SHAPES: usize = UnifiedExpressions::COUNT + CombinedExpression::CO
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, EnumIter, EnumCount, EnumString, IntoStaticStr)]
 pub enum UnifiedExpressions {
+    EyeLeftX,
+    EyeRightX,
+    EyeY,
+
     // 'Biometrically' accurate data that is included with UnifiedEye
     EyeClosedRight, // Closes the right eyelid. Basis on the overall constriction of the palpebral part of orbicularis oculi.
     EyeClosedLeft, // Closes the left eyelid. Basis on the overall constriction of the palpebral part of orbicularis oculi.

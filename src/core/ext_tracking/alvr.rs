@@ -270,6 +270,19 @@ fn load_face(face_fb: &[f32], data: &mut AlvrTrackingData) {
     let getf = |index| face_fb[index as usize];
     let getf2 = |index| face_fb[index as usize];
 
+    data.setu(
+        UnifiedExpressions::EyeRightX,
+        getf(FaceFb::EyesLookRightR) - getf(FaceFb::EyesLookLeftR),
+    );
+    data.setu(
+        UnifiedExpressions::EyeLeftX,
+        getf(FaceFb::EyesLookRightL) - getf(FaceFb::EyesLookLeftL),
+    );
+    data.setu(
+        UnifiedExpressions::EyeY,
+        getf(FaceFb::EyesLookUpR) - getf(FaceFb::EyesLookDownR),
+    );
+
     data.setu(UnifiedExpressions::EyeClosedLeft, getf(FaceFb::EyesClosedL));
     data.setu(
         UnifiedExpressions::EyeClosedRight,
