@@ -116,7 +116,7 @@ impl ExtTracking {
             self.alvr_receiver.receive(&mut self.data, state);
             self.babble_receiver
                 .receive(&mut self.data, &mut state.status);
-            self.data.calc_combined();
+            self.data.calc_combined(state);
         }
 
         if matches!(state.params.get("FacePause"), Some(OscType::Bool(true))) {

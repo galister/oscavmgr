@@ -2,7 +2,7 @@ use glam::{Quat, Vec3};
 use rosc::{OscBundle, OscType};
 use strum::{EnumCount, EnumIter, EnumString, IntoStaticStr};
 
-use crate::core::{bundle::AvatarBundle, ext_oscjson::MysteryParam};
+use crate::core::{bundle::AvatarBundle, ext_oscjson::MysteryParam, AppState};
 
 #[derive(Debug, Default, Clone)]
 pub struct Posef {
@@ -60,17 +60,21 @@ impl UnifiedTrackingData {
         self.shapes[UnifiedExpressions::COUNT + exp as usize] = value;
     }
 
-    pub fn calc_combined(&mut self) {
-        let left_eye_openness = (1. - self.getu(UnifiedExpressions::EyeClosedLeft)).clamp(0., 1.);
+    pub fn calc_combined(&mut self, state: &mut AppState) {
+        let left_eye_openness =
+            (1. - self.getu(UnifiedExpressions::EyeClosedLeft) * 1.5).clamp(0., 1.);
         self.setc(
             CombinedExpression::EyeLidLeft,
-            left_eye_openness * 0.75 + self.getu(UnifiedExpressions::EyeWideLeft) * 0.25,
+            left_eye_openness * 0.75
+                + self.getu(UnifiedExpressions::EyeWideLeft) * left_eye_openness * 0.25,
         );
 
-        let right_eye_openness = (1. - self.getu(UnifiedExpressions::EyeClosedRight)).clamp(0., 1.);
+        let right_eye_openness =
+            (1. - self.getu(UnifiedExpressions::EyeClosedRight) * 1.5).clamp(0., 1.);
         self.setc(
             CombinedExpression::EyeLidRight,
-            right_eye_openness * 0.75 + self.getu(UnifiedExpressions::EyeWideRight) * 0.25,
+            right_eye_openness * 0.75
+                + self.getu(UnifiedExpressions::EyeWideRight) * right_eye_openness * 0.25,
         );
 
         self.setc(
@@ -340,6 +344,27 @@ impl UnifiedTrackingData {
                 - self.getu(UnifiedExpressions::BrowPinchRight))
             .clamp(-1.0, 1.0),
         );
+
+        // Custom stuff
+        let blush_face = match state.params.get("BlushFace") {
+            Some(OscType::Float(f)) => *f > 0.1,
+            _ => false,
+        };
+        let blush_nade = match state.params.get("BlushNade") {
+            Some(OscType::Float(f)) => *f > 0.1,
+            _ => false,
+        };
+        let blush_eye = self.eyes[0].map(|e| e.y).unwrap_or(0.0) > 0.25;
+
+        let rate = if blush_face || blush_nade || blush_eye {
+            0.10
+        } else {
+            -0.05
+        };
+
+        let old_blush = self.getc(CombinedExpression::Blush);
+        let new_blush = (old_blush + rate * state.delta_t).clamp(0.0, 1.0);
+        self.setc(CombinedExpression::Blush, new_blush);
     }
 
     fn dirty_shapes(&self) -> Vec<usize> {
@@ -587,4 +612,5 @@ pub enum CombinedExpression {
     // Non-standard
     EarLeft,
     EarRight,
+    Blush,
 }

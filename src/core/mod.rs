@@ -40,6 +40,7 @@ pub struct AppState {
     pub params: AvatarParameters,
     pub status: status::StatusBar,
     pub self_drive: Arc<AtomicBool>,
+    pub delta_t: f32,
 }
 
 pub struct AvatarOsc {
@@ -110,10 +111,10 @@ impl AvatarOsc {
                 last_received: Instant::now(),
             },
             self_drive: Arc::new(AtomicBool::new(true)),
+            delta_t: 0.011f32,
         };
 
         let watchdog = watchdog::Watchdog::new(state.self_drive.clone());
-
         thread::spawn({
             let drive = state.self_drive.clone();
             move || loop {
@@ -131,12 +132,15 @@ impl AvatarOsc {
             listener.local_addr().unwrap()
         );
 
+        let mut last_frame = Instant::now();
         let mut buf = [0u8; rosc::decoder::MTU];
         loop {
             if let Ok((size, addr)) = listener.recv_from(&mut buf) {
                 if addr == lo_addr {
                     self.process(&mut state);
                     watchdog.update();
+                    state.delta_t = last_frame.elapsed().as_secs_f32();
+                    last_frame = Instant::now();
                     continue;
                 }
 
@@ -147,6 +151,8 @@ impl AvatarOsc {
                         let name: Arc<str> = packet.addr[PARAM_PREFIX.len()..].into();
                         if &*name == "VSync" {
                             self.process(&mut state);
+                            state.delta_t = last_frame.elapsed().as_secs_f32();
+                            last_frame = Instant::now();
                             watchdog.update();
                         } else if let Some(arg) = packet.args.into_iter().next() {
                             self.ext_storage.notify(&name, &arg);

@@ -15,6 +15,7 @@ use anyhow::bail;
 use colored::{Color, Colorize};
 use glam::Vec3;
 use once_cell::sync::Lazy;
+use strum::EnumCount;
 use websocket_lite::{ClientBuilder, Message, Opcode};
 
 use crate::core::AppState;
@@ -73,7 +74,8 @@ impl AlvrReceiver {
                 data.eyes[1] = Some(new_right);
             }
             if let Some(new_shapes) = new_data.shapes {
-                data.shapes = new_shapes;
+                data.shapes[..=UnifiedExpressions::COUNT]
+                    .copy_from_slice(&new_shapes[..=UnifiedExpressions::COUNT]);
                 self.last_received = Instant::now();
             }
 
