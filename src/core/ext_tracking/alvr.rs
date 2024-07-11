@@ -202,7 +202,7 @@ fn receive_until_err(
 
 fn load_devices(
     device_motions: &[(String, DeviceMotion)],
-    hand_skeletons: &[Option<[Pose; 31]>; 2],
+    hand_skeletons: &[Option<[Pose; 26]>; 2],
     data: &mut AlvrTrackingData,
 ) {
     if let Some(left_hand) = hand_skeletons[0] {
