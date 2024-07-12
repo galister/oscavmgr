@@ -21,7 +21,6 @@ use super::{
 };
 
 static STA_ON: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "WIVRN".color(Color::Green)).into());
-static STA_OFF: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "WIVRN".color(Color::Red)).into());
 
 struct WivrnPayload {
     eyes: [f32; 8],
@@ -74,8 +73,6 @@ impl WivrnReceiver {
 
         if self.last_received.elapsed() < Duration::from_secs(1) {
             state.status.add_item(STA_ON.clone());
-        } else {
-            state.status.add_item(STA_OFF.clone());
         }
     }
 }

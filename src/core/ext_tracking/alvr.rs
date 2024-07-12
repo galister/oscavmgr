@@ -23,7 +23,6 @@ use crate::core::{ext_tracking::face2_fb::face2_fb_to_unified, AppState};
 use super::unified::{UnifiedExpressions, UnifiedTrackingData, NUM_SHAPES};
 
 static STA_ON: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "ALVR".color(Color::Green)).into());
-static STA_OFF: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "ALVR".color(Color::Red)).into());
 
 #[derive(Default)]
 struct AlvrTrackingData {
@@ -94,8 +93,6 @@ impl AlvrReceiver {
 
         if self.last_received.elapsed() < Duration::from_secs(1) {
             state.status.add_item(STA_ON.clone());
-        } else {
-            state.status.add_item(STA_OFF.clone());
         }
     }
 }
@@ -137,7 +134,7 @@ fn receive_until_err(
 ) -> anyhow::Result<()> {
     const WS_URL: &str = "ws://127.0.0.1:8082/api/events";
     let Ok(mut ws) = ClientBuilder::new(WS_URL)?.connect_insecure() else {
-        bail!("failed to connect");
+        return Ok(()); // long retry
     };
 
     while let Ok(Some(message)) = ws.receive() {
@@ -168,7 +165,7 @@ fn receive_until_err(
                                         }
                                     }
                                 });
-                                return Ok(());
+                                return Ok(()); // long retry
                             }
                             alvr_events::EventType::Tracking(tracking) => {
                                 let mut data = AlvrTrackingData::default();

@@ -18,7 +18,6 @@ use crate::core::{ext_tracking::unified::UnifiedExpressions, AppState};
 use super::unified::UnifiedTrackingData;
 
 static STA_ON: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "BABBLE".color(Color::Green)).into());
-static STA_OFF: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "BABBLE".color(Color::Red)).into());
 
 pub(super) struct BabbleReceiver {
     sender: SyncSender<Box<BabbleEvent>>,
@@ -49,8 +48,6 @@ impl BabbleReceiver {
 
         if self.last_received.elapsed() < Duration::from_secs(1) {
             state.status.add_item(STA_ON.clone());
-        } else {
-            state.status.add_item(STA_OFF.clone());
         }
     }
 }
