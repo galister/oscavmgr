@@ -88,59 +88,52 @@ impl ExtAutoPilot {
                 state.status.add_item(STA_FLW.clone());
                 status_set = true;
             }
-        } else {
-            // hands within 20cm within and pointing towards each other
-            let left = state.tracking.left_hand;
-            let right = state.tracking.right_hand;
-            let dot = left.z_axis.dot(right.z_axis);
+        } else if matches!(state.params.get("AutoPilot"), Some(OscType::Bool(true))) {
+            state.status.add_item(STA_MAN.clone());
+            status_set = true;
 
-            if (left.translation - right.translation).length_squared() < 0.04 && dot > 0.99 {
-                state.status.add_item(STA_MAN.clone());
-                status_set = true;
-
-                if let Some(eye) = tracking.data.eyes[0] {
-                    if !(-0.6..=0.5).contains(&eye.z) {
-                        look_horizontal = -eye.z;
-                    }
-
-                    if eye.y > 0.4 && !self.jumped {
-                        bundle.send_input_button("Jump", true);
-                        self.jumped = true;
-                    } else if self.jumped {
-                        bundle.send_input_button("Jump", false);
-                        self.jumped = false;
-                    }
+            if let Some(eye) = tracking.data.eyes[0] {
+                if !(-0.6..=0.5).contains(&eye.z) {
+                    look_horizontal = -eye.z;
                 }
 
-                let puff = tracking.data.getu(UnifiedExpressions::CheekPuffLeft)
-                    + tracking.data.getu(UnifiedExpressions::CheekPuffRight);
-
-                let suck = tracking.data.getu(UnifiedExpressions::CheekSuckLeft)
-                    + tracking.data.getu(UnifiedExpressions::CheekSuckRight);
-
-                if puff > 0.5 {
-                    vertical = (puff * 0.6).min(1.0);
-                } else if suck > 0.5 {
-                    vertical = -(suck * 0.6).min(1.0);
+                if eye.y > 0.4 && !self.jumped {
+                    bundle.send_input_button("Jump", true);
+                    self.jumped = true;
+                } else if self.jumped {
+                    bundle.send_input_button("Jump", false);
+                    self.jumped = false;
                 }
+            }
 
-                let brows = tracking.data.getu(UnifiedExpressions::BrowInnerUpLeft)
-                    + tracking.data.getu(UnifiedExpressions::BrowInnerUpRight)
-                    + tracking.data.getu(UnifiedExpressions::BrowOuterUpLeft)
-                    + tracking.data.getu(UnifiedExpressions::BrowOuterUpRight);
+            let puff = tracking.data.getu(UnifiedExpressions::CheekPuffLeft)
+                + tracking.data.getu(UnifiedExpressions::CheekPuffRight);
 
-                if brows < 2.0 {
-                    self.voice_lock = false;
-                }
+            let suck = tracking.data.getu(UnifiedExpressions::CheekSuckLeft)
+                + tracking.data.getu(UnifiedExpressions::CheekSuckRight);
 
-                if brows > 3.0 && !self.voice {
-                    bundle.send_input_button("Voice", true);
-                    self.voice = true;
-                    self.voice_lock = true;
-                } else if self.voice && !self.voice_lock {
-                    bundle.send_input_button("Voice", false);
-                    self.voice = false;
-                }
+            if puff > 0.5 {
+                vertical = (puff * 0.6).min(1.0);
+            } else if suck > 0.5 {
+                vertical = -(suck * 0.6).min(1.0);
+            }
+
+            let brows = tracking.data.getu(UnifiedExpressions::BrowInnerUpLeft)
+                + tracking.data.getu(UnifiedExpressions::BrowInnerUpRight)
+                + tracking.data.getu(UnifiedExpressions::BrowOuterUpLeft)
+                + tracking.data.getu(UnifiedExpressions::BrowOuterUpRight);
+
+            if brows < 2.0 {
+                self.voice_lock = false;
+            }
+
+            if brows > 3.0 && !self.voice {
+                bundle.send_input_button("Voice", true);
+                self.voice = true;
+                self.voice_lock = true;
+            } else if self.voice && !self.voice_lock {
+                bundle.send_input_button("Voice", false);
+                self.voice = false;
             }
         }
 
@@ -167,8 +160,8 @@ impl ExtAutoPilot {
         const FLIGHT_INTS: Range<i32> = 120..125;
 
         let Some(OscType::Int(emote)) = state.params.get("VRCEmote") else {
-        return;
-    };
+            return;
+        };
 
         let left_pos = state.tracking.left_hand.translation;
         let right_pos = state.tracking.right_hand.translation;
