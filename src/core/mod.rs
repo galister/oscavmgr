@@ -26,6 +26,9 @@ mod ext_tracking;
 mod folders;
 mod watchdog;
 
+#[cfg(feature = "openvr")]
+mod ext_openvr;
+
 pub mod status;
 
 pub const PARAM_PREFIX: &str = "/avatar/parameters/";
@@ -51,6 +54,8 @@ pub struct AvatarOsc {
     ext_storage: ext_storage::ExtStorage,
     ext_gogo: ext_gogo::ExtGogo,
     ext_tracking: ext_tracking::ExtTracking,
+    #[cfg(feature = "openvr")]
+    ext_openvr: ext_openvr::ExtOpenVr,
     multi: MultiProgress,
 }
 
@@ -76,6 +81,9 @@ impl AvatarOsc {
         let ext_tracking = ext_tracking::ExtTracking::new();
         let ext_oscjson = ext_oscjson::ExtOscJson::new();
 
+        #[cfg(feature = "openvr")]
+        let ext_openvr = ext_openvr::ExtOpenVr::new();
+
         AvatarOsc {
             osc_port,
             upstream,
@@ -84,6 +92,8 @@ impl AvatarOsc {
             ext_storage,
             ext_gogo,
             ext_tracking,
+            #[cfg(feature = "openvr")]
+            ext_openvr,
             multi,
         }
     }
@@ -234,6 +244,9 @@ impl AvatarOsc {
         self.ext_gogo.step(&state.params, &mut bundle);
         self.ext_autopilot
             .step(state, &self.ext_tracking, &mut bundle);
+
+        #[cfg(feature = "openvr")]
+        self.ext_openvr.step(state, &mut bundle);
 
         if let Some(packet) = bundle.content.first() {
             if let OscPacket::Message(..) = packet {

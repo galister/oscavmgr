@@ -10,6 +10,7 @@ pub struct StatusBar {
     fps_counter: VecDeque<Instant>,
     fps: f32,
     start: Instant,
+    pub last_frame_time: f32,
 }
 
 impl StatusBar {
@@ -26,11 +27,15 @@ impl StatusBar {
             recv_counter: VecDeque::new(),
             fps_counter: VecDeque::new(),
             start: Instant::now(),
+            last_frame_time: 0f32,
             fps: 1f32,
         }
     }
 
     pub fn trip_fps_counter(&mut self) {
+        if let Some(last) = self.fps_counter.back() {
+            self.last_frame_time = last.elapsed().as_secs_f32();
+        }
         self.fps_counter.push_back(Instant::now());
 
         while let Some(time) = self.fps_counter.front() {
