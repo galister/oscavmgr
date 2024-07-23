@@ -24,7 +24,7 @@ alvr_events = { git = "https://github.com/alvr-org/ALVR.git", optional = true }
 alvr_common = { git = "https://github.com/alvr-org/ALVR.git", optional = true }
 ovr_overlay = { git = "https://github.com/galister/ovr_overlay_oyasumi.git", optional = true }
 sysinfo = { version = "0.30.0", optional = true }
-websocket-lite = { version = "0.5.2", optional = true, default-features = false }
+websocket-lite = { version = "0.5.2", optional = true, features = [] }
 anyhow = "1.0.82"
 indicatif = "0.17.8"
 colored = "2.1.0"
