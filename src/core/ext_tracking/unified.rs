@@ -33,7 +33,7 @@ impl UnifiedShapeAccessors for UnifiedShapes {
 
     #[inline(always)]
     fn getc(&self, exp: CombinedExpression) -> f32 {
-        self[UnifiedExpressions::COUNT + exp as usize]
+        self[exp as usize]
     }
 
     #[inline(always)]
@@ -43,7 +43,7 @@ impl UnifiedShapeAccessors for UnifiedShapes {
 
     #[inline(always)]
     fn setc(&mut self, exp: CombinedExpression, value: f32) {
-        self[UnifiedExpressions::COUNT + exp as usize] = value;
+        self[exp as usize] = value;
     }
 }
 
@@ -78,7 +78,7 @@ impl UnifiedTrackingData {
 
     #[inline(always)]
     pub fn getc(&self, exp: CombinedExpression) -> f32 {
-        self.shapes[UnifiedExpressions::COUNT + exp as usize]
+        self.shapes[exp as usize]
     }
 
     #[inline(always)]
@@ -88,7 +88,7 @@ impl UnifiedTrackingData {
 
     #[inline(always)]
     pub fn setc(&mut self, exp: CombinedExpression, value: f32) {
-        self.shapes[UnifiedExpressions::COUNT + exp as usize] = value;
+        self.shapes[exp as usize] = value;
     }
 
     pub fn calc_combined(&mut self, state: &mut AppState) {
@@ -593,7 +593,7 @@ pub enum UnifiedExpressions {
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, EnumIter, EnumCount, EnumString, IntoStaticStr)]
 pub enum CombinedExpression {
-    EyeLidLeft,
+    EyeLidLeft = UnifiedExpressions::COUNT,
     EyeLidRight,
     EyeLid,
     EyeSquint,

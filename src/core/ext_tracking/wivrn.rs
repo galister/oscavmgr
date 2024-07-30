@@ -41,7 +41,7 @@ pub(super) struct WivrnReceiver {
 
 impl WivrnReceiver {
     pub fn new() -> Self {
-        let (sender, receiver) = std::sync::mpsc::sync_channel(8);
+        let (sender, receiver) = std::sync::mpsc::sync_channel(32);
         Self {
             sender,
             receiver,
@@ -105,7 +105,7 @@ fn wivrn_receive(sender: SyncSender<Box<WivrnTrackingData>>) {
             };
 
             if let Err(e) = sender.try_send(Box::new(data)) {
-                log::debug!("Failed to send tracking message: {}", e);
+                log::trace!("Failed to send tracking message: {}", e);
             }
         }
     }

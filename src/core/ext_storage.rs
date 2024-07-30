@@ -1,6 +1,5 @@
 use std::{fs::File, time::Instant};
 
-use log::{debug, info};
 use rosc::{OscBundle, OscType};
 
 use super::{bundle::AvatarBundle, folders::CONFIG_DIR};
@@ -41,7 +40,7 @@ impl ExtStorage {
 
     fn save(&mut self) {
         self.last_save = Instant::now();
-        info!("Saving ExtStorage to {}", &self.path);
+        log::info!("Saving ExtStorage to {}", &self.path);
         File::create(&self.path)
             .ok()
             .and_then(|file| serde_json::to_writer(file, &self.data).ok());
@@ -95,13 +94,13 @@ impl ExtStorage {
         }
         if self.ext_index != 0 {
             self.int_index = 0;
-            debug!("ExtIndex {}", self.ext_index);
+            log::trace!("ExtIndex {}", self.ext_index);
             return;
         }
 
         if let Some(value) = self.next() {
             self.last_tick = Instant::now();
-            debug!("Sending {} {}", self.int_index, value);
+            log::trace!("Sending {} {}", self.int_index, value);
 
             bundle.send_parameter("IntIndex", OscType::Int(self.int_index as _));
             bundle.send_parameter("IntValue", OscType::Float(value));

@@ -72,22 +72,23 @@ impl AlvrReceiver {
             }
 
             if let Some(head) = new_data.head {
-                let rot: glam::Quat = unsafe { std::mem::transmute(head.orientation) };
-                let pos: glam::Vec3 = unsafe { std::mem::transmute(head.position) };
-                state.tracking.head = glam::Affine3A::from_rotation_translation(rot, pos);
+                state.tracking.head =
+                    glam::Affine3A::from_rotation_translation(head.orientation, head.position);
                 state.tracking.last_received = Instant::now();
             }
 
             if let Some(left_hand) = new_data.hands[0] {
-                let rot: glam::Quat = unsafe { std::mem::transmute(left_hand.orientation) };
-                let pos: glam::Vec3 = unsafe { std::mem::transmute(left_hand.position) };
-                state.tracking.left_hand = glam::Affine3A::from_rotation_translation(rot, pos);
+                state.tracking.left_hand = glam::Affine3A::from_rotation_translation(
+                    left_hand.orientation,
+                    left_hand.position,
+                );
             }
 
             if let Some(right_hand) = new_data.hands[1] {
-                let rot: glam::Quat = unsafe { std::mem::transmute(right_hand.orientation) };
-                let pos: glam::Vec3 = unsafe { std::mem::transmute(right_hand.position) };
-                state.tracking.right_hand = glam::Affine3A::from_rotation_translation(rot, pos);
+                state.tracking.right_hand = glam::Affine3A::from_rotation_translation(
+                    right_hand.orientation,
+                    right_hand.position,
+                );
             }
         }
 

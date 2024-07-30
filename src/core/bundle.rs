@@ -1,4 +1,3 @@
-use log::debug;
 use rosc::{OscBundle, OscMessage, OscPacket, OscType};
 
 use super::{INPUT_PREFIX, PARAM_PREFIX};
@@ -24,37 +23,39 @@ impl AvatarBundle for OscBundle {
         }
     }
     fn send_parameter(&mut self, name: &str, value: OscType) {
-        debug!("Sending parameter {} = {:?}", name, value);
+        log::trace!("Sending parameter {} = {:?}", name, value);
         self.content.push(OscPacket::Message(OscMessage {
             addr: format!("{}{}", PARAM_PREFIX, name),
             args: vec![value],
         }));
     }
     fn send_tracking(&mut self, addr: &str, args: Vec<OscType>) {
-        debug!("Sending tracking {} = {:?}", addr, args);
+        log::trace!("Sending tracking {} = {:?}", addr, args);
         self.content.push(OscPacket::Message(OscMessage {
             addr: addr.to_string(),
             args,
         }));
     }
     fn send_input_axis(&mut self, name: &str, value: f32) {
-        debug!("Sending input axis {} = {:?}", name, value);
+        log::trace!("Sending input axis {} = {:?}", name, value);
         self.content.push(OscPacket::Message(OscMessage {
             addr: format!("{}{}", INPUT_PREFIX, name),
             args: vec![OscType::Float(value)],
         }));
     }
     fn send_input_button(&mut self, name: &str, value: bool) {
-        debug!("Sending input button {} = {:?}", name, value);
+        log::trace!("Sending input button {} = {:?}", name, value);
         self.content.push(OscPacket::Message(OscMessage {
             addr: format!("{}{}", INPUT_PREFIX, name),
             args: vec![OscType::Bool(value)],
         }));
     }
     fn send_chatbox_message(&mut self, message: String, open_keyboard: bool, play_sound: bool) {
-        debug!(
+        log::trace!(
             "Sending chatbox message {} (kbd: {:?}, sfx: {:?})",
-            message, open_keyboard, play_sound
+            message,
+            open_keyboard,
+            play_sound
         );
         self.content.insert(
             0,
