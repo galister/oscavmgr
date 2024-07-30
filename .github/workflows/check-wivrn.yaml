@@ -1,4 +1,4 @@
-name: Check ALVR
+name: Check WiVRn
 
 on:
   push:
