@@ -41,6 +41,21 @@ jobs:
           asset_name: oscavmgr-alvr
           asset_content_type: application/octet-stream
 
+      - name: Cargo Build WiVRn
+        run: |
+          cargo build --no-default-features --features=wivrn --release
+          chmod +x target/release/oscavmgr
+
+      - name: Upload WiVRn
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_KEY }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./target/release/oscavmgr
+          asset_name: oscavmgr-wivrn
+          asset_content_type: application/octet-stream
+
       - name: Cargo Build Babble
         run: |
           cargo build --no-default-features --features=babble --release
