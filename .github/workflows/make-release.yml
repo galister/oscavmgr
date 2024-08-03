@@ -13,6 +13,7 @@ jobs:
       
       - name: Prepare Environment
         run: |
+          sudo apt install libopenxr-dev
           rustup update stable
           
       - name: Create Release

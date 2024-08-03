@@ -20,6 +20,7 @@ jobs:
       uses: mozilla-actions/sccache-action@v0.0.3
     - name: Prepare Environment
       run: |
+        sudo apt install libopenxr-dev
         rustup update stable
     - name: Build
       run: cargo build --verbose --no-default-features --features=wivrn
