@@ -1,4 +1,10 @@
-use std::{array, str::FromStr, sync::Arc};
+use std::{
+    array,
+    ops::Add,
+    str::FromStr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -12,7 +18,7 @@ use self::alvr::AlvrReceiver;
 use self::babble::BabbleReceiver;
 
 #[cfg(feature = "wivrn")]
-use self::wivrn::WivrnReceiver;
+use self::openxr::OpenXrReceiver;
 
 use self::unified::{CombinedExpression, UnifiedExpressions, UnifiedTrackingData, NUM_SHAPES};
 
@@ -25,19 +31,19 @@ use super::{
 mod alvr;
 #[cfg(feature = "babble")]
 mod babble;
-#[cfg(any(feature = "alvr", feature = "wivrn"))]
 mod face2_fb;
+#[cfg(feature = "wivrn")]
+mod openxr;
 mod sranipal;
 pub mod unified;
-#[cfg(feature = "wivrn")]
-mod wivrn;
 
 pub struct ExtTracking {
     pub data: UnifiedTrackingData,
     params: [Option<MysteryParam>; NUM_SHAPES],
     alvr_receiver: AlvrReceiver,
     babble_receiver: BabbleReceiver,
-    wivrn_receiver: WivrnReceiver,
+    openxr_receiver: Option<OpenXrReceiver>,
+    openxr_next_try: Instant,
 }
 
 impl ExtTracking {
@@ -98,21 +104,21 @@ impl ExtTracking {
             params[e as usize] = Some(new);
         }
 
-        let alvr_receiver = AlvrReceiver::new();
+        let alvr_receiver = AlvrReceiver::new().unwrap(); // never fails
         alvr_receiver.start_loop();
 
-        let babble_receiver = BabbleReceiver::new();
+        let babble_receiver = BabbleReceiver::new().unwrap(); // never fails
         babble_receiver.start_loop();
 
-        let wivrn_receiver = WivrnReceiver::new();
-        wivrn_receiver.start_loop();
+        let openxr_receiver = OpenXrReceiver::new().ok();
 
         let me = Self {
             data: UnifiedTrackingData::default(),
             params,
             alvr_receiver,
             babble_receiver,
-            wivrn_receiver,
+            openxr_receiver,
+            openxr_next_try: Instant::now().add(Duration::from_secs(10)),
         };
         me.print_params();
 
@@ -126,9 +132,21 @@ impl ExtTracking {
         if motion ^ face_override {
             log::debug!("Freeze");
         } else {
-            self.alvr_receiver.receive(&mut self.data, state);
-            self.wivrn_receiver.receive(&mut self.data, state);
-            self.babble_receiver.receive(&mut self.data, state);
+            // don't remove this mut, idk why but rust-analyzer contradicts clippy
+            if let Some(mut oxr) = self.openxr_receiver.take() {
+                if let Err(e) = oxr.receive(&mut self.data, state) {
+                    log::debug!("OpenXR error: {}", e);
+                    self.openxr_next_try = Instant::now().add(Duration::from_secs(10));
+                } else {
+                    self.openxr_receiver = Some(oxr);
+                }
+            } else if self.openxr_next_try < Instant::now() {
+                self.openxr_receiver = OpenXrReceiver::new().ok();
+                self.openxr_next_try = Instant::now().add(Duration::from_secs(10));
+            }
+
+            self.alvr_receiver.receive(&mut self.data, state).ok();
+            self.babble_receiver.receive(&mut self.data, state).ok();
             self.data.calc_combined(state);
         }
 
@@ -231,11 +249,16 @@ impl ExtTracking {
 
 struct DummyReceiver;
 impl DummyReceiver {
-    fn new() -> Self {
-        Self
+    fn new() -> anyhow::Result<Self> {
+        Ok(Self)
     }
     fn start_loop(&self) {}
-    fn receive(&self, _data: &mut UnifiedTrackingData, _: &mut AppState) {}
+    fn receive(&self, _data: &mut UnifiedTrackingData, _: &mut AppState) -> anyhow::Result<()> {
+        Ok(())
+    }
+    fn restart(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(not(feature = "alvr"))]
@@ -245,4 +268,4 @@ type AlvrReceiver = DummyReceiver;
 type BabbleReceiver = DummyReceiver;
 
 #[cfg(not(feature = "wivrn"))]
-type WivrnReceiver = DummyReceiver;
+type OpenXrReceiver = DummyReceiver;

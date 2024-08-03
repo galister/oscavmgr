@@ -448,10 +448,10 @@ impl UnifiedTrackingData {
             bundle.send_tracking(
                 "/tracking/eye/LeftRightPitchYaw",
                 vec![
+                    OscType::Float(-left_euler.x.to_degrees()),
                     OscType::Float(-left_euler.y.to_degrees()),
-                    OscType::Float(-left_euler.z.to_degrees()),
+                    OscType::Float(-right_euler.x.to_degrees()),
                     OscType::Float(-right_euler.y.to_degrees()),
-                    OscType::Float(-right_euler.z.to_degrees()),
                 ],
             );
         }

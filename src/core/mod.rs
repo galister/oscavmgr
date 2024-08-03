@@ -132,7 +132,7 @@ impl AvatarOsc {
                     let _ = lo.send(&[0u8; 1]);
                     thread::sleep(Duration::from_millis(11));
                 } else {
-                    thread::sleep(Duration::from_secs(1));
+                    thread::sleep(Duration::from_millis(200));
                 }
             }
         });
@@ -160,6 +160,7 @@ impl AvatarOsc {
                     if packet.addr.starts_with(PARAM_PREFIX) {
                         let name: Arc<str> = packet.addr[PARAM_PREFIX.len()..].into();
                         if &*name == "VSync" {
+                            state.self_drive.store(false, Ordering::Relaxed);
                             self.process(&mut state);
                             state.delta_t = last_frame.elapsed().as_secs_f32();
                             last_frame = Instant::now();

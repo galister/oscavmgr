@@ -26,13 +26,13 @@ pub(super) struct BabbleReceiver {
 }
 
 impl BabbleReceiver {
-    pub fn new() -> Self {
+    pub fn new() -> anyhow::Result<Self> {
         let (sender, receiver) = sync_channel(128);
-        Self {
+        Ok(Self {
             sender,
             receiver,
             last_received: Instant::now(),
-        }
+        })
     }
 
     pub fn start_loop(&self) {
@@ -40,7 +40,11 @@ impl BabbleReceiver {
         thread::spawn(move || babble_loop(sender));
     }
 
-    pub fn receive(&mut self, data: &mut UnifiedTrackingData, state: &mut AppState) {
+    pub fn receive(
+        &mut self,
+        data: &mut UnifiedTrackingData,
+        state: &mut AppState,
+    ) -> anyhow::Result<()> {
         for event in self.receiver.try_iter() {
             data.shapes[event.expression as usize] = event.value;
             self.last_received = Instant::now();
@@ -49,6 +53,8 @@ impl BabbleReceiver {
         if self.last_received.elapsed() < Duration::from_secs(1) {
             state.status.add_item(STA_ON.clone());
         }
+
+        Ok(())
     }
 }
 

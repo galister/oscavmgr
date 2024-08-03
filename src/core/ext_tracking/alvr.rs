@@ -16,6 +16,7 @@ use colored::{Color, Colorize};
 use glam::Vec3;
 use once_cell::sync::Lazy;
 use strum::EnumCount;
+use sysinfo::ProcessesToUpdate;
 use websocket_lite::{ClientBuilder, Message, Opcode};
 
 use crate::core::{ext_tracking::face2_fb::face2_fb_to_unified, AppState};
@@ -41,13 +42,13 @@ pub(super) struct AlvrReceiver {
 }
 
 impl AlvrReceiver {
-    pub fn new() -> Self {
+    pub fn new() -> anyhow::Result<Self> {
         let (sender, receiver) = std::sync::mpsc::sync_channel(8);
-        Self {
+        Ok(Self {
             sender,
             receiver,
             last_received: Instant::now(),
-        }
+        })
     }
 
     pub fn start_loop(&self) {
@@ -57,7 +58,11 @@ impl AlvrReceiver {
         });
     }
 
-    pub fn receive(&mut self, data: &mut UnifiedTrackingData, state: &mut AppState) {
+    pub fn receive(
+        &mut self,
+        data: &mut UnifiedTrackingData,
+        state: &mut AppState,
+    ) -> anyhow::Result<()> {
         for new_data in self.receiver.try_iter() {
             if let Some(new_left) = new_data.eye[0] {
                 data.eyes[0] = Some(new_left);
@@ -95,13 +100,15 @@ impl AlvrReceiver {
         if self.last_received.elapsed() < Duration::from_secs(1) {
             state.status.add_item(STA_ON.clone());
         }
+
+        Ok(())
     }
 }
 
 #[inline(always)]
 // Takes ALVR-specific Quat
 fn quat_to_euler(q: Quat) -> Vec3 {
-    let (x, y, z) = q.to_euler(EulerRot::ZXY);
+    let (y, x, z) = q.to_euler(EulerRot::YXZ);
     Vec3 { x, y, z }
 }
 
@@ -156,12 +163,12 @@ fn receive_until_err(
                     Ok(msg) => {
                         match msg.event_type {
                             alvr_events::EventType::ServerRequestsSelfRestart => {
-                                log::warn!("ALVR: Server requested data restart");
+                                log::warn!("ALVR: Server requested self restart");
                                 // kill steamvr processes and let auto-restart handle it
-                                system.refresh_processes();
+                                system.refresh_processes(ProcessesToUpdate::All);
                                 system.processes().values().for_each(|p| {
                                     for vrp in VR_PROCESSES.iter() {
-                                        if p.name().contains(vrp) {
+                                        if p.name().to_string_lossy().contains(vrp) {
                                             p.kill();
                                         }
                                     }

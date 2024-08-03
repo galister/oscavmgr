@@ -4,9 +4,11 @@ use std::{
         Arc,
     },
     thread,
+    time::Instant,
 };
 
 pub struct Watchdog {
+    start: Instant,
     self_drive: Arc<AtomicBool>,
     last_received: Arc<AtomicU64>,
 }
@@ -14,33 +16,31 @@ pub struct Watchdog {
 impl Watchdog {
     pub fn new(self_drive: Arc<AtomicBool>) -> Self {
         Self {
+            start: Instant::now(),
             self_drive,
-            last_received: Arc::new(AtomicU64::new(now())),
+            last_received: Arc::new(AtomicU64::new(0)),
         }
     }
 
     pub fn update(&self) {
-        self.last_received.store(now(), Ordering::Relaxed);
+        self.last_received
+            .store(self.start.elapsed().as_millis() as _, Ordering::Relaxed);
     }
 
     pub fn run(&self) {
         let sleep_duration = std::time::Duration::from_secs(1);
         let self_drive = self.self_drive.clone();
         let last_received = self.last_received.clone();
+        let start = self.start;
 
         thread::spawn(move || loop {
             let last_recv_time = last_received.load(std::sync::atomic::Ordering::Relaxed);
-            if now() - last_recv_time > 5 {
+
+            let elapsed = start.elapsed().as_millis() as u64;
+            if elapsed - last_recv_time > 500 {
                 self_drive.store(true, Ordering::Relaxed);
             }
             thread::sleep(sleep_duration);
         });
     }
-}
-
-fn now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap() // safe to unwrap
-        .as_secs()
 }

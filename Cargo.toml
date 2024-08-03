@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 env_logger = "0.11.3"
-glam = "0.28.0"
+glam = { version = "0.28.0", features = ["mint"] }
 glob = "0.3.1"
 log = "0.4.19"
 mdns-sd = "0.11.1"
@@ -23,12 +23,14 @@ tokio = { version = "1.32.0", features = ["full"] }
 alvr_events = { git = "https://github.com/alvr-org/ALVR.git", optional = true }
 alvr_common = { git = "https://github.com/alvr-org/ALVR.git", optional = true }
 ovr_overlay = { git = "https://github.com/galister/ovr_overlay_oyasumi.git", optional = true }
-sysinfo = { version = "0.30.0", optional = true }
+sysinfo = { version = "0.31.2", optional = true }
 websocket-lite = { version = "0.5.2", optional = true, features = [] }
 anyhow = "1.0.82"
 indicatif = "0.17.8"
 colored = "2.1.0"
 indicatif-log-bridge = "0.2.2"
+openxr = { git = "https://github.com/galister/openxrs", default-features = false, features = ["linked", "mint"], optional = true }
+mint = "0.5.9"
 
 [features]
 default = ["alvr"]
@@ -38,6 +40,6 @@ alvr = [
   "dep:sysinfo",
   "dep:websocket-lite",
 ]
-wivrn = []
+wivrn = ["dep:openxr"]
 babble = []
 openvr = ["dep:ovr_overlay"]
