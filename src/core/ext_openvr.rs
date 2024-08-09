@@ -1,6 +1,9 @@
 use std::{
     f32::consts::PI,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -37,10 +40,13 @@ const HEAD_Y: f32 = -0.25;
 
 static TRACKER_ADJUST: Lazy<Affine3A> = Lazy::new(|| Affine3A::from_rotation_x(PI * 0.5));
 
-type TrackedDevices = [TrackedDevice; 8];
+static DEVICE_COUNTER: AtomicU32 = AtomicU32::new(1);
+
+type TrackedDevices = [TrackedDevice; 32];
 
 #[derive(Default)]
 struct TrackedDevice {
+    pub index: u32,
     serial: String,
     active: bool,
     pos: Vec3A,
@@ -153,8 +159,8 @@ impl ExtOpenVr {
                 )
             } else {
                 (
-                    format!("/tracking/trackers/{idx}/position"),
-                    format!("/tracking/trackers/{idx}/rotation"),
+                    format!("/tracking/trackers/{}/position", device.index),
+                    format!("/tracking/trackers/{}/rotation", device.index),
                 )
             };
 
@@ -192,7 +198,7 @@ impl ExtOpenVr {
     }
 }
 
-fn update_devices(system: &mut SystemManager, devices: &mut [TrackedDevice; 8]) {
+fn update_devices(system: &mut SystemManager, devices: &mut TrackedDevices) {
     for (idx, device) in devices.iter_mut().enumerate() {
         let dev_idx = TrackedDeviceIndex::new(idx as _).unwrap(); // safe
         if !system.is_tracked_device_connected(dev_idx) {
@@ -225,6 +231,7 @@ fn update_devices(system: &mut SystemManager, devices: &mut [TrackedDevice; 8]) 
 
         if !device.active {
             log::info!("OpenVR: New tracker: {}", &device.serial);
+            device.index = DEVICE_COUNTER.fetch_add(1, Ordering::Relaxed);
             device.active = true;
         }
 
