@@ -50,6 +50,45 @@ trap 'jobs -p | xargs kill' EXIT
 ./oscavmgr
 ```
 
+## VRC-Only: SteamVR tracker relay
+
+This is a hack to let you use your SteamVR lighthouse trackers with WiVRn. **You will need a head tracker.**
+
+First of all, let's set up SteamVR to run in headless mode. We will be only using SteamVR for trackers. [SteamVR headless mode guide](https://github.com/username223/SteamVRNoHeadset)
+
+Start SteamVR before starting Envision. Make sure your trackers show up.
+
+In envision, make sure you have an up-to-date WiVRn. If your WiVRn is from before Aug 1 2024, consider re-creating your WiVRn profile.
+
+Start up WiVRn and you can also start VRChat.
+
+Recommended launch script:
+
+```bash
+#!/usr/bin/env bash
+trap 'jobs -p | xargs kill' EXIT
+
+# wget -O VrcAdvert https://github.com/galister/VrcAdvert/releases/latest/download/VrcAdvert
+./VrcAdvert OscAvMgr 9402 9002 &
+
+# force connect to SteamVR instead of OpenComposite
+export VR_OVERRIDE=$HOME/.local/share/Steam/steamapps/common/SteamVR
+
+# local coordinates from the tracker to the avatar's head bone
+export HEAD_X="0.0"
+export HEAD_Y="-0.25"
+export HEAD_Z="0.0"
+
+# local rotation to apply to the tracker
+export HEAD_YAW="0.0"
+export HEAD_PITCH="0.0"
+export HEAD_ROLL="0.0"
+
+cargo run --no-default-features --features=wivrn,openvr --release -- $@
+```
+
+OscAvMgr will do a calibration on startup. Simply stand straight (no t-pose needed) while having all trackers line-of-sight to the base stations. If the calibration didn't work, simply restart OscAvMgr.
+
 ## VRC-Only: Autopilot
 
 This activates when your HMD is in hand-tracking mode. The bottom of the terminal will change from `AP-OFF` to `MANUAL` when active.

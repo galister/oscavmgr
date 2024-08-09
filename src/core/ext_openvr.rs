@@ -1,4 +1,5 @@
 use std::{
+    env,
     f32::consts::PI,
     sync::{
         atomic::{AtomicU32, Ordering},
@@ -36,7 +37,29 @@ static OPENVR_ON: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "OPENVR".color(Col
 static OPENVR_OFF: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "OPENVR".color(Color::Red)).into());
 
 const FEET_Y: f32 = 0.10;
-const HEAD_Y: f32 = -0.25;
+
+macro_rules! env_parse {
+    ($x:expr) => {
+        env::var($x)
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or_default()
+    };
+}
+
+static HEAD_OFFSET: Lazy<Affine3A> = Lazy::new(|| {
+    let rotation = Quat::from_rotation_y(env_parse!("HEAD_YAW"))
+        * Quat::from_rotation_x(env_parse!("HEAD_PITCH"))
+        * Quat::from_rotation_z(env_parse!("HEAD_ROLL"));
+
+    let translation = vec3(
+        env_parse!("HEAD_X"),
+        env_parse!("HEAD_Y"),
+        env_parse!("HEAD_Z"),
+    );
+
+    Affine3A::from_rotation_translation(rotation, translation)
+});
 
 static TRACKER_ADJUST: Lazy<Affine3A> = Lazy::new(|| Affine3A::from_rotation_x(PI * 0.5));
 
@@ -133,7 +156,7 @@ impl ExtOpenVr {
                 continue;
             }
 
-            let affine = tracking.mDeviceToAbsoluteTracking.to_affine() * *TRACKER_ADJUST;
+            let mut affine = tracking.mDeviceToAbsoluteTracking.to_affine() * *TRACKER_ADJUST;
 
             if self.frames < 90 {
                 self.floor_y = self.floor_y.min(affine.translation.y - FEET_Y);
@@ -146,13 +169,8 @@ impl ExtOpenVr {
                 continue;
             }
 
-            let mut p = affine.translation;
-            let quat = Quat::from_affine3(&affine);
-            let (ry, rx, rz) = quat.to_euler(glam::EulerRot::YXZ);
-            let deg = vec3(rx.to_degrees(), ry.to_degrees(), rz.to_degrees());
-
             let (addr_pos, addr_rot) = if self.head.is_some_and(|head| head == idx) {
-                p += affine.y_axis * HEAD_Y;
+                affine *= *HEAD_OFFSET;
                 (
                     "/tracking/trackers/head/position".into(),
                     "/tracking/trackers/head/rotation".into(),
@@ -163,6 +181,11 @@ impl ExtOpenVr {
                     format!("/tracking/trackers/{}/rotation", device.index),
                 )
             };
+
+            let p = affine.translation;
+            let quat = Quat::from_affine3(&affine);
+            let (ry, rx, rz) = quat.to_euler(glam::EulerRot::YXZ);
+            let deg = vec3(rx.to_degrees(), ry.to_degrees(), rz.to_degrees());
 
             bundle.send_tracking(
                 &addr_pos,
