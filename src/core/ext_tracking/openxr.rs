@@ -91,7 +91,7 @@ impl OpenXrReceiver {
 
         let aim_spaces = [
             aim_actions[0].create_space(session.clone(), xr::Path::NULL, xr::Posef::IDENTITY)?,
-            aim_actions[0].create_space(session.clone(), xr::Path::NULL, xr::Posef::IDENTITY)?,
+            aim_actions[1].create_space(session.clone(), xr::Path::NULL, xr::Posef::IDENTITY)?,
         ];
 
         let face_tracker = MyFaceTracker::new(&session).ok();
@@ -237,9 +237,9 @@ fn xr_init() -> anyhow::Result<(xr::Instance, xr::SystemId)> {
     let Ok(instance) = entry.create_instance(
         &xr::ApplicationInfo {
             api_version: Version::new(1, 0, 0),
-            application_name: "wlx-overlay-s",
+            application_name: "oscavmgr",
             application_version: 0,
-            engine_name: "wlx-overlay-s",
+            engine_name: "oscavmgr",
             engine_version: 0,
         },
         &enabled_extensions,
