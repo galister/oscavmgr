@@ -23,5 +23,5 @@ jobs:
         sudo apt install libopenxr-dev
         rustup update stable
     - name: Build
-      run: cargo build --verbose --no-default-features --features=wivrn
+      run: cargo build --verbose --no-default-features --features=openxr
 
