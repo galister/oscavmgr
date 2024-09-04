@@ -27,48 +27,17 @@ jobs:
           draft: true
           prerelease: false
 
-      - name: Cargo Build ALVR
+      - name: Cargo Build
         run: |
-          cargo build --no-default-features --features=alvr --release
+          cargo build --release
           chmod +x target/release/oscavmgr
 
-      - name: Upload ALVR
+      - name: Upload
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_KEY }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./target/release/oscavmgr
-          asset_name: oscavmgr-alvr
+          asset_name: oscavmgr
           asset_content_type: application/octet-stream
-
-      - name: Cargo Build WiVRn
-        run: |
-          cargo build --no-default-features --features=wivrn --release
-          chmod +x target/release/oscavmgr
-
-      - name: Upload WiVRn
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_KEY }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./target/release/oscavmgr
-          asset_name: oscavmgr-wivrn
-          asset_content_type: application/octet-stream
-
-      - name: Cargo Build Babble
-        run: |
-          cargo build --no-default-features --features=babble --release
-          chmod +x target/release/oscavmgr
-
-      - name: Upload Babble
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_KEY }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./target/release/oscavmgr
-          asset_name: oscavmgr-babble
-          asset_content_type: application/octet-stream
-

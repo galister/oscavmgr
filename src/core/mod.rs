@@ -15,6 +15,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::Args;
+
 use self::bundle::AvatarBundle;
 
 mod bundle;
@@ -26,14 +28,11 @@ mod ext_tracking;
 mod folders;
 mod watchdog;
 
-#[cfg(feature = "openvr")]
-mod ext_openvr;
-
 pub mod status;
 
 pub const PARAM_PREFIX: &str = "/avatar/parameters/";
 const AVATAR_PREFIX: &str = "/avatar/change";
-const TRACK_PREFIX: &str = "/tracking/";
+const TRACK_PREFIX: &str = "/tracking/trackers/";
 const INPUT_PREFIX: &str = "/input/";
 
 pub type AvatarParameters = HashMap<Arc<str>, OscType>;
@@ -54,8 +53,6 @@ pub struct AvatarOsc {
     ext_storage: ext_storage::ExtStorage,
     ext_gogo: ext_gogo::ExtGogo,
     ext_tracking: ext_tracking::ExtTracking,
-    #[cfg(feature = "openvr")]
-    ext_openvr: ext_openvr::ExtOpenVr,
     multi: MultiProgress,
 }
 
@@ -67,33 +64,28 @@ pub struct OscTrack {
 }
 
 impl AvatarOsc {
-    pub fn new(osc_port: u16, vrc_port: u16, multi: MultiProgress) -> AvatarOsc {
+    pub fn new(args: Args, multi: MultiProgress) -> AvatarOsc {
         let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
         let upstream = UdpSocket::bind("0.0.0.0:0").expect("bind upstream socket");
         upstream
-            .connect(SocketAddr::new(ip, vrc_port))
+            .connect(SocketAddr::new(ip, args.vrc_port))
             .expect("upstream connect");
 
         let ext_autopilot = ext_autopilot::ExtAutoPilot::new();
         let ext_storage = ext_storage::ExtStorage::new();
         let ext_gogo = ext_gogo::ExtGogo::new();
-        let ext_tracking = ext_tracking::ExtTracking::new();
+        let ext_tracking = ext_tracking::ExtTracking::new(args.face);
         let ext_oscjson = ext_oscjson::ExtOscJson::new();
 
-        #[cfg(feature = "openvr")]
-        let ext_openvr = ext_openvr::ExtOpenVr::new();
-
         AvatarOsc {
-            osc_port,
+            osc_port: args.osc_port,
             upstream,
             ext_autopilot,
             ext_oscjson,
             ext_storage,
             ext_gogo,
             ext_tracking,
-            #[cfg(feature = "openvr")]
-            ext_openvr,
             multi,
         }
     }
@@ -171,7 +163,6 @@ impl AvatarOsc {
                             state.params.insert(name, arg);
                         }
                     } else if packet.addr.starts_with(TRACK_PREFIX) {
-                        log::info!("Received data: {:?}", packet);
                         if let [OscType::Float(x), OscType::Float(y), OscType::Float(z), OscType::Float(ex), OscType::Float(ey), OscType::Float(ez)] =
                             packet.args[..]
                         {
@@ -215,7 +206,30 @@ impl AvatarOsc {
             .and_then(|buf| self.send_upstream(&buf).ok());
 
         state.self_drive.store(
-            !osc_root_node.is_some_and(|n| n.has_vsync()),
+            !osc_root_node.is_some_and(|n| {
+                let has_vsync = n.has_vsync();
+
+                let vsync_name = "VSync".color(Color::BrightYellow);
+
+                if !has_vsync {
+                    log::warn!(
+                        "This avatar does not have a {} parameter, falling back to {} mode.",
+                        vsync_name,
+                        *DRIVE_ON,
+                    );
+                    log::warn!(
+                        "The {} parameter helps OscAvMgr keep in sync with your avatar's animator.",
+                        vsync_name
+                    );
+                    log::warn!(
+                        "Consider implementing a {} parameter using either:",
+                        vsync_name
+                    );
+                    log::warn!("- a bool param that flips every animator frame.");
+                    log::warn!("- a float param that randomizes each animator frame.");
+                }
+                has_vsync
+            }),
             Ordering::Relaxed,
         );
     }
@@ -245,9 +259,6 @@ impl AvatarOsc {
         self.ext_gogo.step(&state.params, &mut bundle);
         self.ext_autopilot
             .step(state, &self.ext_tracking, &mut bundle);
-
-        #[cfg(feature = "openvr")]
-        self.ext_openvr.step(state, &mut bundle);
 
         if let Some(packet) = bundle.content.first() {
             if let OscPacket::Message(..) = packet {
@@ -279,5 +290,27 @@ impl AvatarOsc {
 static DRIVE_ON: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "DRIVE".color(Color::Blue)).into());
 static DRIVE_OFF: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "VSYNC".color(Color::Green)).into());
 
-static TRACK_ON: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "TRACK".color(Color::Green)).into());
-static TRACK_OFF: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "TRACK".color(Color::Red)).into());
+pub static TRACK_ON: Lazy<Arc<str>> =
+    Lazy::new(|| format!("{}", "TRACK".color(Color::Green)).into());
+pub static TRACK_OFF: Lazy<Arc<str>> =
+    Lazy::new(|| format!("{}", "TRACK".color(Color::Red)).into());
+
+pub static INSTRUCTIONS_START: Lazy<Arc<str>> = Lazy::new(|| {
+    format!(
+        "{}{}{}",
+        "==".color(Color::BrightBlue),
+        "Instructions".color(Color::BrightYellow),
+        "================================".color(Color::BrightBlue)
+    )
+    .into()
+});
+
+pub static INSTRUCTIONS_END: Lazy<Arc<str>> = Lazy::new(|| {
+    format!(
+        "{}{}{}",
+        "================================".color(Color::BrightBlue),
+        "Instructions".color(Color::BrightYellow),
+        "==".color(Color::BrightBlue)
+    )
+    .into()
+});

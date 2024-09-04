@@ -1,4 +1,8 @@
-use std::{sync::Arc, time::Instant};
+use std::{
+    ops::Add,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use colored::{Color, Colorize};
 use glam::{vec3, Affine3A, EulerRot, Quat};
@@ -14,9 +18,9 @@ use openxr::{
     FaceExpressionSet2FB, FaceTrackingDataSource2FB, SpaceLocation, Version,
 };
 
-use crate::core::AppState;
+use crate::core::{AppState, INSTRUCTIONS_END, INSTRUCTIONS_START, TRACK_ON};
 
-use super::unified::UnifiedTrackingData;
+use super::{unified::UnifiedTrackingData, FaceReceiver};
 
 static STA_GAZE: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "GAZE".color(Color::Green)).into());
 static STA_GAZE_OFF: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "GAZE".color(Color::Red)).into());
@@ -24,6 +28,61 @@ static STA_FACE: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "FACE".color(Color:
 static STA_FACE_OFF: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "FACE".color(Color::Red)).into());
 
 pub struct OpenXrReceiver {
+    state: Option<XrState>,
+    last_attempt: Instant,
+}
+
+impl OpenXrReceiver {
+    pub fn new() -> Self {
+        Self {
+            state: None,
+            last_attempt: Instant::now(),
+        }
+    }
+
+    fn try_init(&mut self) {
+        self.state = XrState::new().map_err(|e| log::error!("XR: {}", e)).ok();
+        self.last_attempt = Instant::now();
+    }
+}
+
+impl FaceReceiver for OpenXrReceiver {
+    fn start_loop(&mut self) {
+        log::info!("{}", *INSTRUCTIONS_START);
+        log::info!("");
+        log::info!("Using OpenXR (WiVRn/Monado) to provide face data.");
+        log::info!(
+            "It's normal to see {} if the HMD is not yet connected.",
+            "errors".color(Color::Red)
+        );
+        log::info!("");
+        log::info!("Status bar tickers:");
+        log::info!("• {} → face data is being received", *STA_FACE);
+        log::info!("• {} → eye data is being received", *STA_GAZE);
+        log::info!("• {} → head & wrist data is being received", *TRACK_ON);
+        log::info!("");
+        log::info!("{}", *INSTRUCTIONS_END);
+        self.try_init();
+    }
+
+    fn receive(&mut self, data: &mut UnifiedTrackingData, app: &mut AppState) {
+        let Some(state) = self.state.as_mut() else {
+            if self.last_attempt.add(Duration::from_secs(15)) < Instant::now() {
+                self.try_init();
+            }
+            app.status.add_item(STA_GAZE_OFF.clone());
+            app.status.add_item(STA_FACE_OFF.clone());
+            return;
+        };
+
+        if let Err(e) = state.receive(data, app) {
+            log::error!("XR: {}", e);
+            self.state = None;
+        }
+    }
+}
+
+struct XrState {
     instance: xr::Instance,
     system: xr::SystemId,
     session: xr::Session<xr::Headless>,
@@ -41,8 +100,8 @@ pub struct OpenXrReceiver {
     session_running: bool,
 }
 
-impl OpenXrReceiver {
-    pub fn new() -> anyhow::Result<Self> {
+impl XrState {
+    fn new() -> anyhow::Result<Self> {
         let (instance, system) = xr_init()?;
 
         let actions = instance.create_action_set("oscavmgr", "OscAvMgr", 0)?;
@@ -115,7 +174,7 @@ impl OpenXrReceiver {
         })
     }
 
-    pub fn receive(
+    fn receive(
         &mut self,
         data: &mut UnifiedTrackingData,
         state: &mut AppState,
@@ -128,7 +187,7 @@ impl OpenXrReceiver {
                         self.session
                             .begin(xr::ViewConfigurationType::PRIMARY_STEREO)?;
                         self.session_running = true;
-                        log::warn!("XrSession started.")
+                        log::info!("XrSession started.")
                     }
                     xr::SessionState::STOPPING => {
                         self.session.end()?;
@@ -225,13 +284,13 @@ fn xr_init() -> anyhow::Result<(xr::Instance, xr::SystemId)> {
     if available_extensions.ext_eye_gaze_interaction {
         enabled_extensions.ext_eye_gaze_interaction = true;
     } else {
-        log::warn!("Missing EXT_eye_gaze_interaction extension.");
+        log::warn!("Missing EXT_eye_gaze_interaction extension. Is Monado/WiVRn up to date?");
     }
 
     if available_extensions.fb_face_tracking2 {
         enabled_extensions.fb_face_tracking2 = true;
     } else {
-        log::warn!("Missing FB_face_tracking2 extension.");
+        log::warn!("Missing FB_face_tracking2 extension. Is Monado/WiVRn up to date?");
     }
 
     let Ok(instance) = entry.create_instance(

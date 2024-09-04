@@ -19,11 +19,18 @@ use strum::EnumCount;
 use sysinfo::ProcessesToUpdate;
 use websocket_lite::{ClientBuilder, Message, Opcode};
 
-use crate::core::{ext_tracking::face2_fb::face2_fb_to_unified, AppState};
+use crate::core::{
+    ext_tracking::face2_fb::face2_fb_to_unified, AppState, INSTRUCTIONS_END, INSTRUCTIONS_START,
+    TRACK_ON,
+};
 
-use super::unified::{UnifiedExpressions, UnifiedTrackingData, NUM_SHAPES};
+use super::{
+    unified::{UnifiedExpressions, UnifiedTrackingData, NUM_SHAPES},
+    FaceReceiver,
+};
 
 static STA_ON: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "ALVR".color(Color::Green)).into());
+static STA_OFF: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "ALVR".color(Color::Red)).into());
 
 #[derive(Default)]
 struct AlvrTrackingData {
@@ -42,27 +49,55 @@ pub(super) struct AlvrReceiver {
 }
 
 impl AlvrReceiver {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new() -> Self {
         let (sender, receiver) = std::sync::mpsc::sync_channel(8);
-        Ok(Self {
+        Self {
             sender,
             receiver,
             last_received: Instant::now(),
-        })
+        }
     }
+}
 
-    pub fn start_loop(&self) {
+impl FaceReceiver for AlvrReceiver {
+    fn start_loop(&mut self) {
+        log::info!("{}", *INSTRUCTIONS_START);
+        log::info!("");
+        log::info!("Selected ALVR to provide face data.");
+        log::info!(
+            "ALVR version {} is supported. Other versions may not work!",
+            (*alvr_common::ALVR_VERSION)
+                .to_string()
+                .color(Color::BrightYellow)
+        );
+        log::info!("");
+        log::info!("Required ALVR settings:");
+        log::info!(
+            "• Extra tab: enable {}",
+            "Log Tracking".color(Color::BrightYellow)
+        );
+        log::info!(
+            "• Presets tab: set {} based on your HMD:",
+            "Eye and Face tracking".color(Color::BrightYellow)
+        );
+        log::info!("  ‣ Quest Pro → VRCFaceTracking");
+        log::info!("  ‣ Other Eye-tracked HMD → VRChat Eye OSC");
+        log::info!("");
+        log::info!("Status bar tickers:");
+        log::info!("• {} → face and/or eye data is being received", *STA_ON);
+        log::info!(
+            "• {} → head & wrist data is being received (for AutoPilot)",
+            *TRACK_ON
+        );
+        log::info!("");
+        log::info!("{}", *INSTRUCTIONS_END);
         let sender = self.sender.clone();
         thread::spawn(move || {
             alvr_receive(sender);
         });
     }
 
-    pub fn receive(
-        &mut self,
-        data: &mut UnifiedTrackingData,
-        state: &mut AppState,
-    ) -> anyhow::Result<()> {
+    fn receive(&mut self, data: &mut UnifiedTrackingData, state: &mut AppState) {
         for new_data in self.receiver.try_iter() {
             if let Some(new_left) = new_data.eye[0] {
                 data.eyes[0] = Some(new_left);
@@ -99,9 +134,9 @@ impl AlvrReceiver {
 
         if self.last_received.elapsed() < Duration::from_secs(1) {
             state.status.add_item(STA_ON.clone());
+        } else {
+            state.status.add_item(STA_OFF.clone());
         }
-
-        Ok(())
     }
 }
 

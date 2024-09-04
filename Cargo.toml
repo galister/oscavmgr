@@ -1,6 +1,6 @@
 [package]
 name = "oscavmgr"
-version = "0.3.2"
+version = "0.4.0"
 edition = "2021"
 
 [dependencies]
@@ -20,26 +20,28 @@ serde = { version = "1.0.188", features = ["derive", "rc"] }
 serde_json = "1.0.107"
 strum = { version = "0.26.2", features = ["derive"] }
 tokio = { version = "1.32.0", features = ["full"] }
-alvr_events = { git = "https://github.com/alvr-org/ALVR.git", optional = true }
-alvr_common = { git = "https://github.com/alvr-org/ALVR.git", optional = true }
-ovr_overlay = { git = "https://github.com/galister/ovr_overlay_oyasumi.git", optional = true }
+alvr_events = { git = "https://github.com/alvr-org/ALVR.git", optional = true, branch = "v20" }
+alvr_common = { git = "https://github.com/alvr-org/ALVR.git", optional = true, branch = "v20" }
 sysinfo = { version = "0.31.2", optional = true }
 websocket-lite = { version = "0.5.2", optional = true, features = [] }
 anyhow = "1.0.82"
 indicatif = "0.17.8"
 colored = "2.1.0"
 indicatif-log-bridge = "0.2.2"
-openxr = { git = "https://github.com/galister/openxrs", default-features = false, features = ["linked", "mint"], optional = true }
+openxr = { git = "https://github.com/galister/openxrs", default-features = false, features = [
+  "linked",
+  "mint",
+], optional = true }
 mint = "0.5.9"
+clap = { version = "4.5.16", features = ["derive"] }
 
 [features]
-default = ["alvr"]
+default = ["alvr", "openxr", "babble"]
 alvr = [
   "dep:alvr_events",
   "dep:alvr_common",
   "dep:sysinfo",
   "dep:websocket-lite",
 ]
-wivrn = ["dep:openxr"]
+openxr = ["dep:openxr"]
 babble = []
-openvr = ["dep:ovr_overlay"]
