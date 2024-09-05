@@ -162,7 +162,7 @@ fn receive_babble_osc(
     loop {
         if let Ok((size, _addr)) = listener.recv_from(&mut buf) {
             if let Ok((_, OscPacket::Message(packet))) = rosc::decoder::decode_udp(&buf[..size]) {
-                if !packet.args.is_empty() {
+                if packet.args.is_empty() {
                     log::warn!("Babble/ETVR OSC Message has no args?");
                 } else if let OscType::Float(x) = packet.args[0] {
                     if let Some(exp) = ADDR_TO_UNIFIED.get(packet.addr.as_str()).cloned() {
