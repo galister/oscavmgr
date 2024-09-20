@@ -165,10 +165,12 @@ fn receive_babble_osc(
                 if packet.args.is_empty() {
                     log::warn!("Babble/ETVR OSC Message has no args?");
                 } else if let OscType::Float(x) = packet.args[0] {
-                    if let Some(exp) = ADDR_TO_UNIFIED.get(packet.addr.as_str()).cloned() {
-                        let event = Box::new(BabbleEtvrEvent::new(exp, x));
-                        if let Err(e) = sender.try_send(event) {
-                            log::warn!("Failed to send Babble/ETVR message: {}", e);
+                    if let Some(expv) = ADDR_TO_UNIFIED.get(packet.addr.as_str()).cloned() {
+                        for exp in expv.iter() {
+                            let event = Box::new(BabbleEtvrEvent::new(*exp, x));
+                            if let Err(e) = sender.try_send(event) {
+                                log::warn!("Failed to send Babble/ETVR message: {}", e);
+                            }
                         }
                     }
                 } else {
@@ -191,61 +193,67 @@ impl BabbleEtvrEvent {
 }
 
 #[rustfmt::skip]
-static ADDR_TO_UNIFIED: Lazy<HashMap<&'static str, UnifiedExpressions>> = Lazy::new(|| {
+static ADDR_TO_UNIFIED: Lazy<HashMap<&'static str, Vec<UnifiedExpressions>>> = Lazy::new(|| {
     [
         // ProjectBabble
-        ("/cheekPuffLeft", UnifiedExpressions::CheekPuffLeft),
-        ("/cheekPuffRight", UnifiedExpressions::CheekPuffRight),
-        ("/cheekSuckLeft", UnifiedExpressions::CheekSuckLeft),
-        ("/cheekSuckRight", UnifiedExpressions::CheekSuckRight),
-        ("/jawOpen", UnifiedExpressions::JawOpen),
-        ("/jawForward", UnifiedExpressions::JawForward),
-        ("/jawLeft", UnifiedExpressions::JawLeft),
-        ("/jawRight", UnifiedExpressions::JawRight),
-        ("/noseSneerLeft", UnifiedExpressions::NoseSneerLeft),
-        ("/noseSneerRight", UnifiedExpressions::NoseSneerRight),
-        ("/mouthFunnel", UnifiedExpressions::LipFunnelLowerLeft),
-        ("/mouthPucker", UnifiedExpressions::LipPuckerLowerLeft),
-        ("/mouthLeft", UnifiedExpressions::MouthPressLeft),
-        ("/mouthRight", UnifiedExpressions::MouthPressRight),
-        ("/mouthRollUpper", UnifiedExpressions::LipSuckUpperLeft),
-        ("/mouthRollLower", UnifiedExpressions::LipSuckLowerLeft),
-        ("/mouthShrugUpper", UnifiedExpressions::MouthRaiserUpper),
-        ("/mouthShrugLower", UnifiedExpressions::MouthRaiserLower),
-        ("/mouthClose", UnifiedExpressions::MouthClosed),
-        ("/mouthSmileLeft", UnifiedExpressions::MouthCornerPullLeft),
-        ("/mouthSmileRight", UnifiedExpressions::MouthCornerPullRight),
-        ("/mouthFrownLeft", UnifiedExpressions::MouthFrownLeft),
-        ("/mouthFrownRight", UnifiedExpressions::MouthFrownRight),
-        ("/mouthDimpleLeft", UnifiedExpressions::MouthDimpleLeft),
-        ("/mouthDimpleRight", UnifiedExpressions::MouthDimpleRight),
-        ("/mouthUpperUpLeft", UnifiedExpressions::MouthUpperUpLeft),
-        ("/mouthUpperUpRight", UnifiedExpressions::MouthUpperUpRight),
-        ("/mouthLowerDownLeft", UnifiedExpressions::MouthLowerDownLeft),
-        ("/mouthLowerDownRight", UnifiedExpressions::MouthLowerDownRight),
-        ("/mouthStretchLeft", UnifiedExpressions::MouthStretchLeft),
-        ("/mouthStretchRight", UnifiedExpressions::MouthStretchRight),
-        ("/tongueOut", UnifiedExpressions::TongueOut),
-        ("/tongueUp", UnifiedExpressions::TongueUp),
-        ("/tongueDown", UnifiedExpressions::TongueDown),
-        ("/tongueLeft", UnifiedExpressions::TongueLeft),
-        ("/tongueRight", UnifiedExpressions::TongueRight),
-        ("/tongueRoll", UnifiedExpressions::TongueRoll),
-        ("/tongueBendDown", UnifiedExpressions::TongueBendDown),
-        ("/tongueCurlUp", UnifiedExpressions::TongueCurlUp),
-        ("/tongueSquish", UnifiedExpressions::TongueSquish),
-        ("/tongueFlat", UnifiedExpressions::TongueFlat),
-        ("/tongueTwistLeft", UnifiedExpressions::TongueTwistLeft),
-        ("/tongueTwistRight", UnifiedExpressions::TongueTwistRight),
-        ("/mouthPressLeft", UnifiedExpressions::MouthPressLeft),
-        ("/mouthPressRight", UnifiedExpressions::MouthPressRight),
+        ("/cheekPuffLeft", vec![UnifiedExpressions::CheekPuffLeft]),
+        ("/cheekPuffRight", vec![UnifiedExpressions::CheekPuffRight]),
+        ("/cheekSuckLeft", vec![UnifiedExpressions::CheekSuckLeft]),
+        ("/cheekSuckRight", vec![UnifiedExpressions::CheekSuckRight]),
+        ("/jawOpen", vec![UnifiedExpressions::JawOpen]),
+        ("/jawForward", vec![UnifiedExpressions::JawForward]),
+        ("/jawLeft", vec![UnifiedExpressions::JawLeft]),
+        ("/jawRight", vec![UnifiedExpressions::JawRight]),
+        ("/noseSneerLeft", vec![UnifiedExpressions::NoseSneerLeft]),
+        ("/noseSneerRight", vec![UnifiedExpressions::NoseSneerRight]),
+        ("/mouthFunnel", vec![UnifiedExpressions::LipFunnelUpperRight, UnifiedExpressions::LipFunnelUpperLeft, UnifiedExpressions::LipFunnelLowerRight, UnifiedExpressions::LipFunnelLowerLeft]),
+        ("/mouthPucker", vec![UnifiedExpressions::LipPuckerUpperRight, UnifiedExpressions::LipPuckerUpperLeft, UnifiedExpressions::LipPuckerLowerRight, UnifiedExpressions::LipPuckerLowerLeft]),
+        ("/mouthLeft", vec![UnifiedExpressions::MouthPressLeft]),
+        ("/mouthRight", vec![UnifiedExpressions::MouthPressRight]),
+        ("/mouthRollUpper", vec![UnifiedExpressions::LipSuckUpperLeft, UnifiedExpressions::LipSuckUpperRight]),
+        ("/mouthRollLower", vec![UnifiedExpressions::LipSuckLowerLeft, UnifiedExpressions::LipSuckLowerRight]),
+        ("/mouthShrugUpper", vec![UnifiedExpressions::MouthRaiserUpper]),
+        ("/mouthShrugLower", vec![UnifiedExpressions::MouthRaiserLower]),
+        ("/mouthClose", vec![UnifiedExpressions::MouthClosed]),
+        ("/mouthSmileLeft", vec![UnifiedExpressions::MouthCornerPullLeft, UnifiedExpressions::MouthCornerSlantLeft]),
+        ("/mouthSmileRight", vec![UnifiedExpressions::MouthCornerPullRight, UnifiedExpressions::MouthCornerSlantRight]),
+        ("/mouthFrownLeft", vec![UnifiedExpressions::MouthFrownLeft, UnifiedExpressions::MouthStretchLeft]),
+        ("/mouthFrownRight", vec![UnifiedExpressions::MouthFrownRight, UnifiedExpressions::MouthStretchRight]),
+        ("/mouthDimpleLeft", vec![UnifiedExpressions::MouthDimpleLeft]),
+        ("/mouthDimpleRight", vec![UnifiedExpressions::MouthDimpleRight]),
+        ("/mouthUpperUpLeft", vec![UnifiedExpressions::MouthUpperUpLeft]),
+        ("/mouthUpperUpRight", vec![UnifiedExpressions::MouthUpperUpRight]),
+        ("/mouthLowerDownLeft", vec![UnifiedExpressions::MouthLowerDownLeft]),
+        ("/mouthLowerDownRight", vec![UnifiedExpressions::MouthLowerDownRight]),
+        ("/mouthStretchLeft", vec![UnifiedExpressions::MouthStretchLeft]),
+        ("/mouthStretchRight", vec![UnifiedExpressions::MouthStretchRight]),
+        ("/tongueOut", vec![UnifiedExpressions::TongueOut]),
+        ("/tongueUp", vec![UnifiedExpressions::TongueUp]),
+        ("/tongueDown", vec![UnifiedExpressions::TongueDown]),
+        ("/tongueLeft", vec![UnifiedExpressions::TongueLeft]),
+        ("/tongueRight", vec![UnifiedExpressions::TongueRight]),
+        ("/tongueRoll", vec![UnifiedExpressions::TongueRoll]),
+        ("/tongueBendDown", vec![UnifiedExpressions::TongueBendDown]),
+        ("/tongueCurlUp", vec![UnifiedExpressions::TongueCurlUp]),
+        ("/tongueSquish", vec![UnifiedExpressions::TongueSquish]),
+        ("/tongueFlat", vec![UnifiedExpressions::TongueFlat]),
+        ("/tongueTwistLeft", vec![UnifiedExpressions::TongueTwistLeft]),
+        ("/tongueTwistRight", vec![UnifiedExpressions::TongueTwistRight]),
+        ("/mouthPressLeft", vec![UnifiedExpressions::MouthPressLeft]),
+        ("/mouthPressRight", vec![UnifiedExpressions::MouthPressRight]),
 
         // ETVR
-        ("/avatar/parameters/LeftEyeX", UnifiedExpressions::EyeLeftX),
-        ("/avatar/parameters/RightEyeX", UnifiedExpressions::EyeRightX),
-        ("/avatar/parameters/EyesY", UnifiedExpressions::EyeY),
-        ("/avatar/parameters/LeftEyeLid", UnifiedExpressions::EyeClosedLeft),
-        ("/avatar/parameters/RightEyeLid", UnifiedExpressions::EyeClosedRight),
+        ("/avatar/parameters/LeftEyeX", vec![UnifiedExpressions::EyeLeftX]),
+        ("/avatar/parameters/RightEyeX", vec![UnifiedExpressions::EyeRightX]),
+        ("/avatar/parameters/EyesY", vec![UnifiedExpressions::EyeY]),
+        ("/avatar/parameters/LeftEyeLid", vec![UnifiedExpressions::EyeClosedLeft]),
+        ("/avatar/parameters/RightEyeLid", vec![UnifiedExpressions::EyeClosedRight]),
+
+        ("/avatar/parameters/v2/EyeLeftX", vec![UnifiedExpressions::EyeLeftX]),
+        ("/avatar/parameters/v2/EyeRightX", vec![UnifiedExpressions::EyeRightX]),
+        ("/avatar/parameters/v2/EyeLeftY", vec![UnifiedExpressions::EyeY]),
+        ("/avatar/parameters/v2/EyeLidLeft", vec![UnifiedExpressions::EyeClosedLeft]),
+        ("/avatar/parameters/v2/EyeLidRight", vec![UnifiedExpressions::EyeClosedRight]),
     ]
     .into_iter()
     .collect()
