@@ -376,6 +376,15 @@ impl UnifiedTrackingData {
             .clamp(-1.0, 1.0),
         );
 
+        self.setc(
+            CombinedExpression::TongueX,
+            self.getu(UnifiedExpressions::TongueRight) - self.getu(UnifiedExpressions::TongueLeft),
+        );
+        self.setc(
+            CombinedExpression::TongueY,
+            self.getu(UnifiedExpressions::TongueUp) - self.getu(UnifiedExpressions::TongueDown),
+        );
+
         // Custom stuff
         let blush_face = match state.params.get("BlushFace") {
             Some(OscType::Float(f)) => *f > 0.1,
@@ -644,6 +653,8 @@ pub enum CombinedExpression {
     CheekPuffSuckRight,
     CheekPuffSuck,
     CheekSquint,
+    TongueX,
+    TongueY,
 
     // Non-standard
     EarLeft,
