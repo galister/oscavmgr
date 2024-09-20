@@ -23,6 +23,9 @@ use super::{
     AppState,
 };
 
+use strum::IntoEnumIterator;
+use strum::EnumCount;
+
 #[cfg(feature = "alvr")]
 mod alvr;
 #[cfg(feature = "babble")]
@@ -190,7 +193,11 @@ impl ExtTracking {
                 .or_else(|_| SRanipalExpression::from_str(&main).map(|e| e as usize))
                 .ok()?;
 
-            log::debug!("Match: {}", name);
+            log::debug!("Match: {}",
+                UnifiedExpressions::iter().nth(idx)
+                .map(|e| format!("UnifiedExpressions::{:?}", e))
+                .or_else(|| CombinedExpression::iter().nth(idx-UnifiedExpressions::COUNT).map(|e| format!("CombinedExpression::{:?}", e)))
+                .or_else(|| Some("None".to_string())).unwrap());
 
             let create = self.params[idx].is_none();
 
