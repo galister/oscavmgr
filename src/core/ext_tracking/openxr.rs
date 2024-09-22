@@ -213,11 +213,14 @@ impl XrState {
             return Ok(());
         }
 
-        let now = self.instance.now()?;
+        let next_frame = xr::Time::from_nanos(
+            self.instance.now()?.as_nanos()
+                + (state.status.last_frame_time.max(0.03334) * 1_000_000_000f32) as i64,
+        );
 
         self.session.sync_actions(&[(&self.actions).into()])?;
 
-        let hmd_loc = self.view_space.locate(&self.stage_space, now)?;
+        let hmd_loc = self.view_space.locate(&self.stage_space, next_frame)?;
         if hmd_loc
             .location_flags
             .contains(xr::SpaceLocationFlags::POSITION_VALID)
@@ -226,12 +229,12 @@ impl XrState {
             state.tracking.last_received = Instant::now();
         }
 
-        let aim_loc = self.aim_spaces[0].locate(&self.stage_space, now)?;
+        let aim_loc = self.aim_spaces[0].locate(&self.stage_space, next_frame)?;
         state.tracking.left_hand = to_affine(&aim_loc);
-        let aim_loc = self.aim_spaces[1].locate(&self.stage_space, now)?;
+        let aim_loc = self.aim_spaces[1].locate(&self.stage_space, next_frame)?;
         state.tracking.right_hand = to_affine(&aim_loc);
 
-        let eye_loc = self.eye_space.locate(&self.view_space, now)?;
+        let eye_loc = self.eye_space.locate(&self.view_space, next_frame)?;
         if eye_loc
             .location_flags
             .contains(xr::SpaceLocationFlags::ORIENTATION_VALID)
@@ -248,8 +251,11 @@ impl XrState {
             let mut weights = [0f32; 70];
             let mut confidences = [0f32; 2];
 
-            let is_valid =
-                face_tracker.get_face_expression_weights(now, &mut weights, &mut confidences)?;
+            let is_valid = face_tracker.get_face_expression_weights(
+                next_frame,
+                &mut weights,
+                &mut confidences,
+            )?;
 
             if is_valid {
                 if let Some(shapes) = super::face2_fb::face2_fb_to_unified(&weights) {
