@@ -100,13 +100,14 @@ impl ExtGogo {
 
     pub fn step(&mut self, parameters: &AvatarParameters, bundle: &mut OscBundle) {
         if let Some(OscType::Int(tracking)) = parameters.get(TRACKING_TYPE) {
-            let (want_loco, not_want_loco) = if 5 < *tracking {
-                (OscType::Bool(true), OscType::Bool(false))
+            let want_loco = if 5 < *tracking {
+                OscType::Bool(true)
             } else {
-                (OscType::Bool(false), OscType::Bool(true))
+                OscType::Bool(false)
             };
 
-            if parameters.get(LOCO_PARAM) == Some(&not_want_loco) {
+            if parameters.get(LOCO_PARAM) != Some(&want_loco) {
+                info!("Set Locomotion: {:?}", want_loco);
                 bundle.send_parameter(LOCO_PARAM, want_loco);
             }
         }
