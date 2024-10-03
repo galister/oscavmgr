@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::time::Instant;
 
-use log::info;
 use rosc::{OscBundle, OscType};
 use serde::{Deserialize, Serialize};
 
@@ -53,7 +52,7 @@ impl ExtGogo {
     }
 
     fn save(&mut self) {
-        info!("Saving ExtGogo to {}", &self.path);
+        log::info!("Saving ExtGogo to {}", &self.path);
         File::create(&self.path)
             .ok()
             .and_then(|file| serde_json::to_writer(file, self).ok());
@@ -87,9 +86,11 @@ impl ExtGogo {
     }
 
     pub fn avatar(&mut self, bundle: &mut OscBundle) {
-        info!(
+        log::info!(
             "Setting Go Pose params: {} {} {}",
-            self.idle_stand, self.idle_crouch, self.idle_prone
+            self.idle_stand,
+            self.idle_crouch,
+            self.idle_prone
         );
         self.staging = None;
         self.avatar_changed = Some(Instant::now());
@@ -107,7 +108,6 @@ impl ExtGogo {
             };
 
             if parameters.get(LOCO_PARAM) != Some(&want_loco) {
-                info!("Set Locomotion: {:?}", want_loco);
                 bundle.send_parameter(LOCO_PARAM, want_loco);
             }
         }
@@ -117,7 +117,7 @@ impl ExtGogo {
             if elapsed < 5 {
                 self.staging = Some(staging);
             } else {
-                info!("Committing Go Pose params");
+                log::info!("Committing Go Pose params");
                 staging.commit(self);
                 self.save();
             }
