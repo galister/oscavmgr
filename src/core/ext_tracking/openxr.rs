@@ -17,10 +17,14 @@ use openxr::{
     },
     FaceExpressionSet2FB, FaceTrackingDataSource2FB, SpaceLocation, Version,
 };
+use strum::EnumCount;
 
 use crate::core::{AppState, INSTRUCTIONS_END, INSTRUCTIONS_START, TRACK_ON};
 
-use super::{unified::UnifiedTrackingData, FaceReceiver};
+use super::{
+    unified::{UnifiedExpressions, UnifiedShapeAccessors, UnifiedTrackingData},
+    FaceReceiver,
+};
 
 static STA_GAZE: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "GAZE".color(Color::Green)).into());
 static STA_GAZE_OFF: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "GAZE".color(Color::Red)).into());
@@ -227,6 +231,10 @@ impl XrState {
         {
             state.tracking.head = to_affine(&hmd_loc);
             state.tracking.last_received = Instant::now();
+        } else {
+            // HMD is sleeping, close the avatar's eyes (unless face tracker can provide valid data)
+            data.shapes.setu(UnifiedExpressions::EyeClosedLeft, 1.0);
+            data.shapes.setu(UnifiedExpressions::EyeClosedRight, 1.0);
         }
 
         let aim_loc = self.aim_spaces[0].locate(&self.stage_space, next_frame)?;
@@ -259,7 +267,8 @@ impl XrState {
 
             if is_valid {
                 if let Some(shapes) = super::face2_fb::face2_fb_to_unified(&weights) {
-                    data.shapes = shapes;
+                    data.shapes[..=UnifiedExpressions::COUNT]
+                        .copy_from_slice(&shapes[..=UnifiedExpressions::COUNT]);
                 }
                 state.status.add_item(STA_FACE.clone());
             } else {

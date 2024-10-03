@@ -385,6 +385,8 @@ impl UnifiedTrackingData {
             self.getu(UnifiedExpressions::TongueUp) - self.getu(UnifiedExpressions::TongueDown),
         );
 
+        let allow_blush = !matches!(state.params.get("AllowBlush"), Some(OscType::Bool(false)));
+
         // Custom stuff
         let blush_face = match state.params.get("BlushFace") {
             Some(OscType::Float(f)) => *f > 0.1,
@@ -394,9 +396,9 @@ impl UnifiedTrackingData {
             Some(OscType::Float(f)) => *f > 0.1,
             _ => false,
         };
-        let blush_eye = self.eyes[0].map(|e| e.y).unwrap_or(0.0) > 0.25;
+        let blush_eye = self.eyes[0].map(|e| e.x).unwrap_or(0.0) > 0.3;
 
-        let rate = if blush_face || blush_nade || blush_eye {
+        let rate = if allow_blush && (blush_face || blush_nade || blush_eye) {
             0.10
         } else {
             -0.05
