@@ -117,6 +117,7 @@ impl AvatarOsc {
         };
 
         let watchdog = watchdog::Watchdog::new(state.self_drive.clone());
+        watchdog.run();
         thread::spawn({
             let drive = state.self_drive.clone();
             move || loop {
