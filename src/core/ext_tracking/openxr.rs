@@ -102,6 +102,8 @@ struct XrState {
     aim_actions: [xr::Action<xr::Posef>; 2],
     events: xr::EventDataBuffer,
     session_running: bool,
+
+    eyes_closed_frames: u32,
 }
 
 impl XrState {
@@ -175,6 +177,7 @@ impl XrState {
             aim_actions,
             events: xr::EventDataBuffer::new(),
             session_running: false,
+            eyes_closed_frames: 0,
         })
     }
 
@@ -243,11 +246,32 @@ impl XrState {
         state.tracking.right_hand = to_affine(&aim_loc);
 
         let eye_loc = self.eye_space.locate(&self.view_space, next_frame)?;
-        if eye_loc
-            .location_flags
-            .contains(xr::SpaceLocationFlags::ORIENTATION_VALID)
-        {
-            let (y, x, z) = to_quat(eye_loc.pose.orientation).to_euler(EulerRot::YXZ);
+        if eye_loc.location_flags.contains(
+            xr::SpaceLocationFlags::ORIENTATION_VALID | xr::SpaceLocationFlags::ORIENTATION_TRACKED,
+        ) {
+            let now_q = to_quat(eye_loc.pose.orientation);
+            let (y, x, z) = now_q.to_euler(EulerRot::YXZ);
+
+            let mut eye_closed = 0.0;
+
+            if let Some(last) = data.eyes[0] {
+                let last_q = Quat::from_euler(EulerRot::YXZ, last.y, last.x, last.z);
+
+                if last_q.angle_between(now_q).to_degrees() > 10.0 {
+                    self.eyes_closed_frames = 5;
+                }
+            }
+
+            if self.eyes_closed_frames > 0 {
+                self.eyes_closed_frames -= 1;
+                eye_closed = 1.0;
+            }
+
+            data.shapes
+                .setu(UnifiedExpressions::EyeClosedLeft, eye_closed);
+            data.shapes
+                .setu(UnifiedExpressions::EyeClosedRight, eye_closed);
+
             data.eyes[0] = Some(vec3(x, y, z));
             data.eyes[1] = data.eyes[0];
             state.status.add_item(STA_GAZE.clone());
