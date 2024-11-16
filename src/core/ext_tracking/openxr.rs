@@ -252,7 +252,7 @@ impl XrState {
             let now_q = to_quat(eye_loc.pose.orientation);
             let (y, x, z) = now_q.to_euler(EulerRot::YXZ);
 
-            let mut eye_closed = 0.0;
+            let mut eye_closed = ((x.to_degrees() + 5.0) / -55.0).max(0.0);
 
             if let Some(last) = data.eyes[0] {
                 let last_q = Quat::from_euler(EulerRot::YXZ, last.y, last.x, last.z);
