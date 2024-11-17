@@ -8,20 +8,13 @@ use colored::{Color, Colorize};
 use glam::{vec3, Affine3A, EulerRot, Quat};
 use mint::{Quaternion, Vector3};
 use once_cell::sync::Lazy;
-use openxr::{
-    self as xr,
-    raw::FaceTracking2FB,
-    sys::{
-        Bool32, FaceExpressionInfo2FB, FaceExpressionWeights2FB, FaceTracker2FB,
-        FaceTrackerCreateInfo2FB,
-    },
-    FaceExpressionSet2FB, FaceTrackingDataSource2FB, SpaceLocation, Version,
-};
+use openxr as xr;
 use strum::EnumCount;
 
 use crate::core::{AppState, INSTRUCTIONS_END, INSTRUCTIONS_START, TRACK_ON};
 
 use super::{
+    htc::HtcFacialData,
     unified::{UnifiedExpressions, UnifiedShapeAccessors, UnifiedTrackingData},
     FaceReceiver,
 };
@@ -86,13 +79,12 @@ impl FaceReceiver for OpenXrReceiver {
     }
 }
 
-struct XrState {
+pub(super) struct XrState {
     instance: xr::Instance,
     system: xr::SystemId,
     session: xr::Session<xr::Headless>,
     frame_waiter: xr::FrameWaiter,
     frame_stream: xr::FrameStream<xr::Headless>,
-    face_tracker: Option<MyFaceTracker>,
     stage_space: xr::Space,
     view_space: xr::Space,
     eye_space: xr::Space,
@@ -102,6 +94,9 @@ struct XrState {
     aim_actions: [xr::Action<xr::Posef>; 2],
     events: xr::EventDataBuffer,
     session_running: bool,
+
+    face_tracker_fb: Option<MyFaceTrackerFB>,
+    face_tracker_htc: Option<MyFaceTrackerHTC>,
 
     eyes_closed_frames: u32,
 }
@@ -159,15 +154,14 @@ impl XrState {
             aim_actions[1].create_space(session.clone(), xr::Path::NULL, xr::Posef::IDENTITY)?,
         ];
 
-        let face_tracker = MyFaceTracker::new(&session).ok();
-
-        Ok(Self {
+        let mut me = Self {
             instance,
             system,
             session,
             frame_waiter,
             frame_stream,
-            face_tracker,
+            face_tracker_fb: None,
+            face_tracker_htc: None,
             stage_space,
             view_space,
             eye_space,
@@ -178,7 +172,31 @@ impl XrState {
             events: xr::EventDataBuffer::new(),
             session_running: false,
             eyes_closed_frames: 0,
-        })
+        };
+
+        me.face_tracker_fb = MyFaceTrackerFB::new(&me).ok();
+        me.face_tracker_htc = MyFaceTrackerHTC::new(&me).ok();
+
+        Ok(me)
+    }
+
+    fn load_properties<T>(&self, next: *mut T) -> xr::Result<()> {
+        unsafe {
+            let mut p = xr::sys::SystemProperties {
+                ty: xr::sys::SystemProperties::TYPE,
+                next: next as _,
+                ..std::mem::zeroed()
+            };
+            let res = (self.instance.fp().get_system_properties)(
+                self.instance.as_raw(),
+                self.system,
+                &mut p,
+            );
+            if res != xr::sys::Result::SUCCESS {
+                return Err(res);
+            }
+            Ok(())
+        }
     }
 
     fn receive(
@@ -279,7 +297,7 @@ impl XrState {
             state.status.add_item(STA_GAZE_OFF.clone());
         }
 
-        if let Some(face_tracker) = self.face_tracker.as_ref() {
+        if let Some(face_tracker) = self.face_tracker_fb.as_ref() {
             let mut weights = [0f32; 70];
             let mut confidences = [0f32; 2];
 
@@ -328,13 +346,15 @@ fn xr_init() -> anyhow::Result<(xr::Instance, xr::SystemId)> {
 
     if available_extensions.fb_face_tracking2 {
         enabled_extensions.fb_face_tracking2 = true;
-    } else {
-        log::warn!("Missing FB_face_tracking2 extension. Is Monado/WiVRn up to date?");
+    }
+
+    if available_extensions.htc_facial_tracking {
+        enabled_extensions.htc_facial_tracking = true;
     }
 
     let Ok(instance) = entry.create_instance(
         &xr::ApplicationInfo {
-            api_version: Version::new(1, 0, 0),
+            api_version: xr::Version::new(1, 0, 0),
             application_name: "oscavmgr",
             application_version: 0,
             engine_name: "oscavmgr",
@@ -362,30 +382,51 @@ fn xr_init() -> anyhow::Result<(xr::Instance, xr::SystemId)> {
     Ok((instance, system))
 }
 
-struct MyFaceTracker {
-    api: FaceTracking2FB,
-    tracker: FaceTracker2FB,
+struct MyFaceTrackerFB {
+    api: xr::raw::FaceTracking2FB,
+    tracker: xr::sys::FaceTracker2FB,
 }
 
-impl MyFaceTracker {
-    pub fn new<G>(session: &xr::Session<G>) -> anyhow::Result<Self> {
-        let api = unsafe {
-            FaceTracking2FB::load(session.instance().entry(), session.instance().as_raw())?
+impl MyFaceTrackerFB {
+    pub fn new(xr_state: &XrState) -> anyhow::Result<Self> {
+        if xr_state.instance.exts().fb_face_tracking2.is_none() {
+            anyhow::bail!("FB_face_tracking2 not supported.");
+        }
+
+        let mut props = xr::sys::SystemFaceTrackingProperties2FB {
+            ty: xr::StructureType::SYSTEM_FACE_TRACKING_PROPERTIES2_FB,
+            next: std::ptr::null_mut(),
+            supports_visual_face_tracking: xr::sys::Bool32::from_raw(0),
+            supports_audio_face_tracking: xr::sys::Bool32::from_raw(0),
         };
 
-        let mut data_source = FaceTrackingDataSource2FB::VISUAL;
+        xr_state.load_properties(&mut props)?;
 
-        let info = FaceTrackerCreateInfo2FB {
+        if props.supports_visual_face_tracking.into_raw() == 0 {
+            anyhow::bail!("FB_face_tracking2 unable to provide visual data.");
+        }
+
+        let api = unsafe {
+            xr::raw::FaceTracking2FB::load(
+                xr_state.session.instance().entry(),
+                xr_state.session.instance().as_raw(),
+            )?
+        };
+
+        let mut data_source = xr::sys::FaceTrackingDataSource2FB::VISUAL;
+
+        let info = xr::sys::FaceTrackerCreateInfo2FB {
             ty: xr::StructureType::FACE_TRACKER_CREATE_INFO2_FB,
             next: std::ptr::null(),
-            face_expression_set: FaceExpressionSet2FB::DEFAULT,
+            face_expression_set: xr::FaceExpressionSet2FB::DEFAULT,
             requested_data_source_count: 1,
             requested_data_sources: &mut data_source,
         };
 
-        let mut tracker = FaceTracker2FB::default();
+        let mut tracker = xr::sys::FaceTracker2FB::default();
 
-        let res = unsafe { (api.create_face_tracker2)(session.as_raw(), &info, &mut tracker) };
+        let res =
+            unsafe { (api.create_face_tracker2)(xr_state.session.as_raw(), &info, &mut tracker) };
         if res.into_raw() != 0 {
             anyhow::bail!("Failed to create face tracker: {:?}", res);
         }
@@ -399,20 +440,20 @@ impl MyFaceTracker {
         weights: &mut [f32],
         confidences: &mut [f32],
     ) -> anyhow::Result<bool> {
-        let mut expressions = FaceExpressionWeights2FB {
+        let mut expressions = xr::sys::FaceExpressionWeights2FB {
             ty: xr::StructureType::FACE_EXPRESSION_WEIGHTS2_FB,
             next: std::ptr::null_mut(),
             weight_count: weights.len() as _,
             weights: weights.as_mut_ptr(),
             confidence_count: confidences.len() as _,
             confidences: confidences.as_mut_ptr(),
-            is_eye_following_blendshapes_valid: Bool32::from_raw(0),
-            is_valid: Bool32::from_raw(0),
-            data_source: FaceTrackingDataSource2FB::VISUAL,
+            is_eye_following_blendshapes_valid: xr::sys::Bool32::from_raw(0),
+            is_valid: xr::sys::Bool32::from_raw(0),
+            data_source: xr::sys::FaceTrackingDataSource2FB::VISUAL,
             time,
         };
 
-        let info = FaceExpressionInfo2FB {
+        let info = xr::sys::FaceExpressionInfo2FB {
             ty: xr::StructureType::FACE_EXPRESSION_INFO2_FB,
             next: std::ptr::null(),
             time,
@@ -429,10 +470,140 @@ impl MyFaceTracker {
     }
 }
 
-impl Drop for MyFaceTracker {
+impl Drop for MyFaceTrackerFB {
     fn drop(&mut self) {
         unsafe {
             (self.api.destroy_face_tracker2)(self.tracker);
+        }
+    }
+}
+
+pub(super) struct MyFaceTrackerHTC {
+    api: xr::raw::FacialTrackingHTC,
+    eye_tracker: Option<xr::sys::FacialTrackerHTC>,
+    lip_tracker: Option<xr::sys::FacialTrackerHTC>,
+}
+
+impl MyFaceTrackerHTC {
+    pub fn new(xr_state: &XrState) -> anyhow::Result<Self> {
+        if xr_state.instance.exts().htc_facial_tracking.is_none() {
+            anyhow::bail!("HTC_facial_tracking not supported.");
+        }
+        let mut props = xr::sys::SystemFacialTrackingPropertiesHTC {
+            ty: xr::StructureType::SYSTEM_FACIAL_TRACKING_PROPERTIES_HTC,
+            next: std::ptr::null_mut(),
+            support_eye_facial_tracking: xr::sys::Bool32::from_raw(0),
+            support_lip_facial_tracking: xr::sys::Bool32::from_raw(0),
+        };
+
+        xr_state.load_properties(&mut props)?;
+
+        if props.support_eye_facial_tracking.into_raw()
+            + props.support_lip_facial_tracking.into_raw()
+            == 0
+        {
+            anyhow::bail!("HTC_facial_tracking is unable to provide lip/eye data.");
+        }
+
+        let api = unsafe {
+            xr::raw::FacialTrackingHTC::load(
+                xr_state.session.instance().entry(),
+                xr_state.session.instance().as_raw(),
+            )?
+        };
+
+        let mut info = xr::sys::FacialTrackerCreateInfoHTC {
+            ty: xr::StructureType::FACIAL_TRACKER_CREATE_INFO_HTC,
+            next: std::ptr::null(),
+            facial_tracking_type: xr::sys::FacialTrackingTypeHTC::EYE_DEFAULT,
+        };
+
+        let eye_tracker = if props.support_eye_facial_tracking.into_raw() != 0 {
+            let mut eye_tracker = xr::sys::FacialTrackerHTC::default();
+
+            let res = unsafe {
+                (api.create_facial_tracker)(xr_state.session.as_raw(), &info, &mut eye_tracker)
+            };
+            if res.into_raw() != 0 {
+                anyhow::bail!("Failed to create upper face tracker: {:?}", res);
+            }
+            Some(eye_tracker)
+        } else {
+            None
+        };
+
+        let lip_tracker = if props.support_lip_facial_tracking.into_raw() != 0 {
+            info.facial_tracking_type = xr::sys::FacialTrackingTypeHTC::LIP_DEFAULT;
+
+            let mut lip_tracker = xr::sys::FacialTrackerHTC::default();
+
+            let res = unsafe {
+                (api.create_facial_tracker)(xr_state.session.as_raw(), &info, &mut lip_tracker)
+            };
+            if res.into_raw() != 0 {
+                anyhow::bail!("Failed to create lower face tracker: {:?}", res);
+            }
+            Some(lip_tracker)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            api,
+            eye_tracker,
+            lip_tracker,
+        })
+    }
+
+    fn get_expressions_internal<const E: usize>(
+        &self,
+        tracker: xr::sys::FacialTrackerHTC,
+        sample_time: xr::Time,
+    ) -> Option<[f32; E]> {
+        let mut arr = [0f32; E];
+        let mut info = xr::sys::FacialExpressionsHTC {
+            ty: xr::StructureType::FACIAL_EXPRESSIONS_HTC,
+            next: std::ptr::null_mut(),
+            sample_time,
+            is_active: xr::sys::Bool32::from_raw(0),
+            expression_count: arr.len() as _,
+            expression_weightings: arr.as_mut_ptr(),
+        };
+
+        let res = unsafe { (self.api.get_facial_expressions)(tracker, &mut info) };
+        if res.into_raw() != 0 {
+            log::error!("Failed to get HTC facial expression weights");
+            return None;
+        }
+
+        if info.is_active.into_raw() != 0 {
+            Some(arr)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_expressions(&self, sample_time: xr::Time) -> HtcFacialData {
+        HtcFacialData {
+            eye: self
+                .eye_tracker
+                .and_then(|t| self.get_expressions_internal(t, sample_time)),
+            lip: self
+                .lip_tracker
+                .and_then(|t| self.get_expressions_internal(t, sample_time)),
+        }
+    }
+}
+
+impl Drop for MyFaceTrackerHTC {
+    fn drop(&mut self) {
+        unsafe {
+            if let Some(tracker) = self.eye_tracker.take() {
+                (self.api.destroy_facial_tracker)(tracker);
+            }
+            if let Some(tracker) = self.lip_tracker.take() {
+                (self.api.destroy_facial_tracker)(tracker);
+            }
         }
     }
 }
@@ -442,7 +613,7 @@ fn to_quat(p: xr::Quaternionf) -> Quat {
     q.into()
 }
 
-fn to_affine(loc: &SpaceLocation) -> Affine3A {
+fn to_affine(loc: &xr::SpaceLocation) -> Affine3A {
     let t: Vector3<f32> = loc.pose.position.into();
     Affine3A::from_rotation_translation(to_quat(loc.pose.orientation), t.into())
 }
