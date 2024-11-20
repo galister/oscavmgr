@@ -14,7 +14,7 @@ use strum::EnumCount;
 use crate::core::{AppState, INSTRUCTIONS_END, INSTRUCTIONS_START, TRACK_ON};
 
 use super::{
-    htc::HtcFacialData,
+    htc::{htc_to_unified, HtcFacialData},
     unified::{UnifiedExpressions, UnifiedShapeAccessors, UnifiedTrackingData},
     FaceReceiver,
 };
@@ -174,8 +174,12 @@ impl XrState {
             eyes_closed_frames: 0,
         };
 
-        me.face_tracker_fb = MyFaceTrackerFB::new(&me).ok();
-        me.face_tracker_htc = MyFaceTrackerHTC::new(&me).ok();
+        me.face_tracker_fb = MyFaceTrackerFB::new(&me)
+            .map_err(|e| log::info!("FB_face_tracking2: {}", e))
+            .ok();
+        me.face_tracker_htc = MyFaceTrackerHTC::new(&me)
+            .map_err(|e| log::info!("HTC_facial_tracking: {}", e))
+            .ok();
 
         Ok(me)
     }
@@ -318,6 +322,19 @@ impl XrState {
             }
         };
 
+        if let Some(face_tracker) = self.face_tracker_htc.as_ref() {
+            let htc_data = face_tracker.get_expressions(next_frame);
+
+            if htc_data.eye.is_some() || htc_data.lip.is_some() {
+                let shapes = htc_to_unified(&htc_data);
+                data.shapes[..=UnifiedExpressions::COUNT]
+                    .copy_from_slice(&shapes[..=UnifiedExpressions::COUNT]);
+                state.status.add_item(STA_FACE.clone());
+            } else {
+                state.status.add_item(STA_FACE_OFF.clone());
+            }
+        }
+
         Ok(())
     }
 }
@@ -390,7 +407,7 @@ struct MyFaceTrackerFB {
 impl MyFaceTrackerFB {
     pub fn new(xr_state: &XrState) -> anyhow::Result<Self> {
         if xr_state.instance.exts().fb_face_tracking2.is_none() {
-            anyhow::bail!("FB_face_tracking2 not supported.");
+            anyhow::bail!("Extension not supported.");
         }
 
         let mut props = xr::sys::SystemFaceTrackingProperties2FB {
@@ -403,7 +420,7 @@ impl MyFaceTrackerFB {
         xr_state.load_properties(&mut props)?;
 
         if props.supports_visual_face_tracking.into_raw() == 0 {
-            anyhow::bail!("FB_face_tracking2 unable to provide visual data.");
+            anyhow::bail!("Unable to provide visual data.");
         }
 
         let api = unsafe {
@@ -428,8 +445,10 @@ impl MyFaceTrackerFB {
         let res =
             unsafe { (api.create_face_tracker2)(xr_state.session.as_raw(), &info, &mut tracker) };
         if res.into_raw() != 0 {
-            anyhow::bail!("Failed to create face tracker: {:?}", res);
+            anyhow::bail!("Could not initialize: {:?}", res);
         }
+
+        log::info!("Using FB_face_tracking2 for face.");
 
         Ok(Self { api, tracker })
     }
@@ -487,7 +506,7 @@ pub(super) struct MyFaceTrackerHTC {
 impl MyFaceTrackerHTC {
     pub fn new(xr_state: &XrState) -> anyhow::Result<Self> {
         if xr_state.instance.exts().htc_facial_tracking.is_none() {
-            anyhow::bail!("HTC_facial_tracking not supported.");
+            anyhow::bail!("Extension not supported.");
         }
         let mut props = xr::sys::SystemFacialTrackingPropertiesHTC {
             ty: xr::StructureType::SYSTEM_FACIAL_TRACKING_PROPERTIES_HTC,
@@ -502,7 +521,7 @@ impl MyFaceTrackerHTC {
             + props.support_lip_facial_tracking.into_raw()
             == 0
         {
-            anyhow::bail!("HTC_facial_tracking is unable to provide lip/eye data.");
+            anyhow::bail!("Unable to provide lip/eye data.");
         }
 
         let api = unsafe {
@@ -525,7 +544,7 @@ impl MyFaceTrackerHTC {
                 (api.create_facial_tracker)(xr_state.session.as_raw(), &info, &mut eye_tracker)
             };
             if res.into_raw() != 0 {
-                anyhow::bail!("Failed to create upper face tracker: {:?}", res);
+                anyhow::bail!("Could not initialize upper face tracker: {:?}", res);
             }
             Some(eye_tracker)
         } else {
@@ -541,12 +560,14 @@ impl MyFaceTrackerHTC {
                 (api.create_facial_tracker)(xr_state.session.as_raw(), &info, &mut lip_tracker)
             };
             if res.into_raw() != 0 {
-                anyhow::bail!("Failed to create lower face tracker: {:?}", res);
+                anyhow::bail!("Could not initialize lower face tracker: {:?}", res);
             }
             Some(lip_tracker)
         } else {
             None
         };
+
+        log::info!("Using HTC_facial_tracking for face.");
 
         Ok(Self {
             api,
