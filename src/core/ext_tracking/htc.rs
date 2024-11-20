@@ -22,7 +22,7 @@ impl HtcFacialData {
     }
 }
 
-pub(crate) fn htc_to_unified(d: &HtcFacialData) -> Option<UnifiedShapes> {
+pub(crate) fn htc_to_unified(d: &HtcFacialData) -> UnifiedShapes {
     let mut shapes: UnifiedShapes = [0.0; NUM_SHAPES];
 
     shapes.setu(
@@ -258,5 +258,5 @@ pub(crate) fn htc_to_unified(d: &HtcFacialData) -> Option<UnifiedShapes> {
         UnifiedExpressions::MouthTightenerRight,
     */
 
-    Some(shapes)
+    shapes
 }
