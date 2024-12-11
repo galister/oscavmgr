@@ -63,4 +63,8 @@ pub struct Args {
     /// OSC listen port. Set this same port for VrcAdvert's osc_port!
     #[arg(long, default_value = "9002")]
     osc_port: u16,
+
+    /// The OSC-JSON avatar file to use. See ~/.config/oscavmgr-avatar.json
+    #[arg(long)]
+    avatar: Option<String>,
 }

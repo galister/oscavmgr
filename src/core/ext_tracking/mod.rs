@@ -246,16 +246,22 @@ impl ExtTracking {
 
     fn print_params(&self) {
         for v in self.params.iter().filter_map(|p| p.as_ref()) {
-            if v.main_address.as_ref().is_some() {
-                log::info!("{}: float", v.name,);
-            } else {
-                log::info!(
-                    "{}: {} bits {}",
-                    v.name,
-                    v.num_bits,
-                    if v.neg_address.is_some() { "+ neg" } else { "" },
-                );
+            let mut elems = vec![];
+
+            if v.main_address.is_some() {
+                elems.push("float".into())
             }
+            if v.num_bits > 0 {
+                elems.push(if v.num_bits > 1 {
+                    format!("{} bit", v.num_bits)
+                } else {
+                    format!("{} bits", v.num_bits)
+                });
+            }
+            if v.neg_address.is_some() {
+                elems.push("neg".into());
+            }
+            log::info!("{}: {}", v.name, elems.join(" + "))
         }
     }
 }

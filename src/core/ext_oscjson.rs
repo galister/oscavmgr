@@ -1,10 +1,17 @@
 use log::{info, warn};
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use rosc::{OscBundle, OscType};
-use serde::Deserialize;
-use std::{collections::HashMap, sync::Arc, thread, time::Duration};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{Read, Write},
+    sync::Arc,
+    thread,
+    time::Duration,
+};
 
-use super::bundle::AvatarBundle;
+use super::{bundle::AvatarBundle, folders::CONFIG_DIR};
 
 pub struct ExtOscJson {
     mdns: ServiceDaemon,
@@ -59,37 +66,63 @@ impl ExtOscJson {
         }
 
         if self.oscjson_addr.is_some() && notify_avatar {
-            self.avatar();
+            self.avatar(&AvatarIdentifier::Default);
         }
         notify_avatar
     }
 
-    pub fn avatar(&mut self) -> Option<OscJsonNode> {
-        let Some(addr) = self.oscjson_addr.as_ref() else {
-            warn!("No avatar oscjson address.");
-            return None;
-        };
+    pub fn avatar(&mut self, avatar: &AvatarIdentifier) -> Option<OscJsonNode> {
+        let mut json = String::new();
 
-        thread::sleep(Duration::from_millis(250));
+        if let AvatarIdentifier::Path(path) = avatar {
+            if let Err(e) = File::open(path).and_then(|mut f| f.read_to_string(&mut json)) {
+                log::error!("Could not read file: {:?}", e);
+                return None;
+            }
+        } else {
+            let Some(addr) = self.oscjson_addr.as_ref() else {
+                warn!("No avatar oscjson address.");
+                return None;
+            };
 
-        let Ok(resp) = self.client.get(addr.as_ref()).send() else {
-            warn!("Failed to send avatar json request.");
-            return None;
-        };
+            thread::sleep(Duration::from_millis(250));
 
-        resp.text()
-            .ok()
-            .and_then(|json| match serde_json::from_str(&json) {
-                Ok(root_node) => Some(root_node),
-                Err(e) => {
-                    warn!("Failed to deserialize avatar json: {}", e);
-                    None
-                }
-            })
+            let Ok(resp) = self.client.get(addr.as_ref()).send() else {
+                warn!("Failed to send avatar json request.");
+                return None;
+            };
+
+            let Ok(text) = resp.text() else {
+                warn!("No payload in avatar json response.");
+                return None;
+            };
+
+            json = text;
+        }
+
+        let path = format!("{}/{}", CONFIG_DIR.as_ref(), "oscavmgr-avatar.json");
+        if let Err(e) = File::create(path).and_then(|mut f| f.write_all(json.as_bytes())) {
+            warn!("Could not write avatar json file: {:?}", e);
+        }
+
+        match serde_json::from_str(&json) {
+            Ok(root_node) => Some(root_node),
+            Err(e) => {
+                warn!("Failed to deserialize avatar json: {}", e);
+                None
+            }
+        }
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug)]
+pub enum AvatarIdentifier {
+    Default,
+    Uid(String),
+    Path(String),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct OscJsonNode {
     #[serde(alias = "FULL_PATH")]
     pub full_path: Arc<str>,
@@ -135,12 +168,10 @@ pub struct MysteryParam {
 impl MysteryParam {
     pub fn send(&mut self, value: f32, bundle: &mut OscBundle) {
         if let Some(addr) = self.main_address.as_ref() {
-            if (value - self.last_value).abs() < 0.01 {
-                return;
+            if (value - self.last_value).abs() > 0.01 {
+                bundle.send_parameter(addr, OscType::Float(value));
+                self.last_value = value;
             }
-            bundle.send_parameter(addr, OscType::Float(value));
-            self.last_value = value;
-            return;
         }
 
         let mut value = value;

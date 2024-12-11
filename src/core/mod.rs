@@ -1,4 +1,5 @@
 use colored::{Color, Colorize};
+use ext_oscjson::AvatarIdentifier;
 use glam::{Affine3A, Quat, Vec3};
 use indicatif::MultiProgress;
 use log::info;
@@ -54,6 +55,7 @@ pub struct AvatarOsc {
     ext_gogo: ext_gogo::ExtGogo,
     ext_tracking: ext_tracking::ExtTracking,
     multi: MultiProgress,
+    avatar_file: Option<String>,
 }
 
 pub struct OscTrack {
@@ -87,6 +89,7 @@ impl AvatarOsc {
             ext_gogo,
             ext_tracking,
             multi,
+            avatar_file: args.avatar,
         }
     }
 
@@ -183,7 +186,7 @@ impl AvatarOsc {
                         }
                     } else if packet.addr.starts_with(AVATAR_PREFIX) {
                         if let [OscType::String(avatar)] = &packet.args[..] {
-                            self.avatar(avatar, &mut state);
+                            self.avatar(AvatarIdentifier::Uid(avatar.clone()), &mut state);
                         }
                     } else {
                         log::info!("Received data: {:?}", packet);
@@ -193,9 +196,9 @@ impl AvatarOsc {
         }
     }
 
-    fn avatar(&mut self, avatar: &str, state: &mut AppState) {
-        info!("Avatar changed: {}", avatar);
-        let osc_root_node = self.ext_oscjson.avatar();
+    fn avatar(&mut self, avatar: AvatarIdentifier, state: &mut AppState) {
+        info!("Avatar changed: {:?}", avatar);
+        let osc_root_node = self.ext_oscjson.avatar(&avatar);
         if let Some(osc_root_node) = osc_root_node.as_ref() {
             self.ext_tracking.osc_json(osc_root_node);
         }
@@ -253,8 +256,11 @@ impl AvatarOsc {
         );
 
         if self.ext_oscjson.step() {
-            self.avatar("default", state);
+            self.avatar(AvatarIdentifier::Default, state);
+        } else if let Some(path) = self.avatar_file.take() {
+            self.avatar(AvatarIdentifier::Path(path.clone()), state);
         }
+
         self.ext_storage.step(&mut bundle);
         self.ext_tracking.step(state, &mut bundle);
         self.ext_gogo.step(&state.params, &mut bundle);
