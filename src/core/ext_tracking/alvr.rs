@@ -200,7 +200,7 @@ fn receive_until_err(
                             alvr_events::EventType::ServerRequestsSelfRestart => {
                                 log::warn!("ALVR: Server requested self restart");
                                 // kill steamvr processes and let auto-restart handle it
-                                system.refresh_processes(ProcessesToUpdate::All);
+                                system.refresh_processes(ProcessesToUpdate::All, true);
                                 system.processes().values().for_each(|p| {
                                     for vrp in VR_PROCESSES.iter() {
                                         if p.name().to_string_lossy().contains(vrp) {
