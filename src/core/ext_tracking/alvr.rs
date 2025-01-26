@@ -176,7 +176,9 @@ fn receive_until_err(
     system: &mut sysinfo::System,
 ) -> anyhow::Result<()> {
     const WS_URL: &str = "ws://127.0.0.1:8082/api/events";
-    let Ok(mut ws) = ClientBuilder::new(WS_URL)?.connect_insecure() else {
+    let mut builder = ClientBuilder::new(WS_URL)?;
+    builder.add_header("X-ALVR".to_string(), "true".to_string());
+    let Ok(mut ws) = builder.connect_insecure() else {}
         return Ok(()); // long retry
     };
 
