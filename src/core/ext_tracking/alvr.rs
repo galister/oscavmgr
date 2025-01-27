@@ -178,7 +178,7 @@ fn receive_until_err(
     const WS_URL: &str = "ws://127.0.0.1:8082/api/events";
     let mut builder = ClientBuilder::new(WS_URL)?;
     builder.add_header("X-ALVR".to_string(), "true".to_string());
-    let Ok(mut ws) = builder.connect_insecure() else {}
+    let Ok(mut ws) = builder.connect_insecure() else {
         return Ok(()); // long retry
     };
 
