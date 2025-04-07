@@ -68,6 +68,15 @@ Quick-ascend:
 - While in Gogo flight mode, put both hands (controllers) above your head to ascend at a super-high speed.
 - Requires `TRACK` ticker to be green.
 
+### VRC-Only: VSync parameter
+
+This allows OscAvMgr to best keep in sync with the avatar's animator. This is optional and does not require the use of a synced parameter.
+
+- Create a VSync parameter in your VRCExpressionParameters (Bool, not synced, not saved)
+- Create a VSync parameter in your Animator (Float)
+- Create a new layer in your Animator, with two states set up like [this reference image](./contrib/VSync.webp). (The other state has its VRC Avatar Parameter Driver Value set to 1.)
+- Alternatively, VRCFury users can drag and drop the [VSync prefab](./contrib/VSync.unitypackage) in their avatar hierarchy.
+
 ### VRC-Only External Storage
 
 This allows you to save infrequently used sync parameters into OscAvMgr, so that they don't take up sync param space on your avatar.
