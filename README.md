@@ -21,6 +21,13 @@ wget -O oscavmgr https://github.com/galister/oscavmgr/releases/latest/download/o
 chmod +x VrcAdvert oscavmgr
 ```
 
+or via Homebrew:
+```bash
+brew tap shiloh/atomicxr https://codeberg.org/shiloh/homebrew-atomicxr.git
+brew install vrc-advert
+brew install oscavmgr
+```
+
 Recommended start script:
 
 ```bash
