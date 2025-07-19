@@ -109,7 +109,7 @@ impl AvatarOsc {
     }
 
     pub fn handle_messages(&mut self) {
-        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
         let listener =
             UdpSocket::bind(SocketAddr::new(ip, self.osc_port)).expect("bind listener socket");
 
