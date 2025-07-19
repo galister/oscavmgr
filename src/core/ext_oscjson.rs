@@ -45,10 +45,22 @@ impl ExtOscJson {
 
         for event in self.mdns_recv.try_iter() {
             if let ServiceEvent::ServiceResolved(info) = event {
+                info!("Discovered service: {} at {}:{}",
+                    info.get_fullname(),
+                    info.get_addresses().iter().next().unwrap(),
+                    info.get_port()
+                );
+
                 if !info.get_fullname().starts_with("VRChat-Client-") {
+                    info!("Skipping non-VRChat service: {}", info.get_fullname());
                     continue;
                 }
-                let addr = info.get_addresses().iter().next().unwrap();
+
+                // Prefer IPv4 addresses over IPv6
+                let addr = info.get_addresses().iter()
+                    .find(|a| a.is_ipv4())
+                    .or_else(|| info.get_addresses().iter().next())
+                    .unwrap();
                 info!(
                     "Found OSCJSON service: {} @ {}:{}",
                     info.get_fullname(),
@@ -60,8 +72,16 @@ impl ExtOscJson {
                     notify_avatar = true;
                 }
 
+                // Handle IPv6 addresses by wrapping them in brackets
+                let formatted_addr = if addr.to_string().contains(':') {
+                    format!("[{}]", addr)
+                } else {
+                    addr.to_string()
+                };
+
                 self.oscjson_addr =
-                    Some(format!("http://{}:{}/avatar", addr, info.get_port()).into());
+                    Some(format!("http://{}:{}/avatar", formatted_addr, info.get_port()).into());
+                info!("Set OSCQuery URL to: {}", self.oscjson_addr.as_ref().unwrap());
             }
         }
 
@@ -85,10 +105,11 @@ impl ExtOscJson {
                 return None;
             };
 
+            info!("Attempting to fetch avatar JSON from: {}", addr);
             thread::sleep(Duration::from_millis(250));
 
             let Ok(resp) = self.client.get(addr.as_ref()).send() else {
-                warn!("Failed to send avatar json request.");
+                warn!("Failed to send avatar json request to: {}", addr);
                 return None;
             };
 
@@ -105,11 +126,20 @@ impl ExtOscJson {
             warn!("Could not write avatar json file: {:?}", e);
         }
 
-        match serde_json::from_str(&json) {
-            Ok(root_node) => Some(root_node),
-            Err(e) => {
-                warn!("Failed to deserialize avatar json: {}", e);
-                None
+        // Try to parse as VRChat format first, then fall back to OSCQuery format
+        if let Ok(vrchat_avatar) = serde_json::from_str::<VRChatAvatarConfig>(&json) {
+            info!("Parsed avatar as VRChat format");
+            Some(convert_vrchat_to_oscquery(vrchat_avatar))
+        } else {
+            match serde_json::from_str(&json) {
+                Ok(root_node) => {
+                    info!("Parsed avatar as OSCQuery format");
+                    Some(root_node)
+                }
+                Err(e) => {
+                    warn!("Failed to deserialize avatar json: {}", e);
+                    None
+                }
             }
         }
     }
@@ -151,6 +181,85 @@ impl OscJsonNode {
         self.get("parameters")
             .and_then(|parameters| parameters.get("VSync"))
             .is_some()
+    }
+}
+
+// VRChat avatar JSON format structures
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VRChatAvatarConfig {
+    pub id: String,
+    pub name: String,
+    pub parameters: Vec<VRChatParameter>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VRChatParameter {
+    pub name: String,
+    pub input: Option<VRChatParameterIO>,
+    pub output: Option<VRChatParameterIO>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct VRChatParameterIO {
+    pub address: String,
+    #[serde(rename = "type")]
+    pub param_type: String,
+}
+
+// Convert VRChat format to OSCQuery format
+fn convert_vrchat_to_oscquery(vrchat_config: VRChatAvatarConfig) -> OscJsonNode {
+    let mut parameters_contents = HashMap::new();
+
+    for param in vrchat_config.parameters {
+        // Only process input parameters (the ones we can send to)
+        if let Some(input) = param.input {
+            // Convert VRChat type to OSCQuery type
+            let osc_type = match input.param_type.as_str() {
+                "Float" => "f",
+                "Int" => "i",
+                "Bool" => "b",
+                _ => "f", // Default to float
+            };
+
+            // Extract parameter name from the full path
+            // "/avatar/parameters/FT/v2/JawOpen" -> "FT/v2/JawOpen"
+            let param_name = if input.address.starts_with("/avatar/parameters/") {
+                &input.address[19..] // Remove "/avatar/parameters/"
+            } else {
+                &param.name
+            };
+
+            let full_path_str = input.address.clone();
+            let param_name_str = param_name.to_string();
+
+            let node = OscJsonNode {
+                full_path: full_path_str.into(),
+                access: 2, // Write access
+                data_type: Some(osc_type.into()),
+                contents: None,
+            };
+
+            parameters_contents.insert(param_name_str.into(), node);
+        }
+    }
+
+    // Create the parameters node
+    let parameters_node = OscJsonNode {
+        full_path: "/avatar/parameters".into(),
+        access: 0,
+        data_type: None,
+        contents: Some(parameters_contents),
+    };
+
+    // Create the root avatar node
+    let mut avatar_contents = HashMap::new();
+    avatar_contents.insert("parameters".into(), parameters_node);
+
+    OscJsonNode {
+        full_path: "/avatar".into(),
+        access: 0,
+        data_type: None,
+        contents: Some(avatar_contents),
     }
 }
 
