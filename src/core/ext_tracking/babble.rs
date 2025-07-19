@@ -35,7 +35,7 @@ pub(super) struct BabbleEtvrReceiver {
 
 impl BabbleEtvrReceiver {
     pub fn new(listen_port: u16) -> Self {
-        let (sender, receiver) = sync_channel(128);
+        let (sender, receiver) = sync_channel(2048); // Larger buffer size to avoid the "full channel" warning
         Self {
             listen_port,
             sender,
