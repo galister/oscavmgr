@@ -56,6 +56,10 @@ pub struct Args {
     #[command(subcommand)]
     face: FaceSetup,
 
+    /// Expose and lisen on 0.0.0.0, instead of localhost
+    #[arg(long, default_value_t = false)]
+    expose: bool,
+
     /// OSC port for VRC
     #[arg(long, default_value = "9000")]
     vrc_port: u16,

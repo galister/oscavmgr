@@ -47,6 +47,7 @@ pub struct AppState {
 }
 
 pub struct AvatarOsc {
+    ip: IpAddr,
     osc_port: u16,
     upstream: UdpSocket,
     ext_autopilot: ext_autopilot::ExtAutoPilot,
@@ -67,7 +68,7 @@ pub struct OscTrack {
 
 impl AvatarOsc {
     pub fn new(args: Args, multi: MultiProgress) -> AvatarOsc {
-        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let ip = IpAddr::V4(if args.expose {Ipv4Addr::UNSPECIFIED} else {Ipv4Addr::LOCALHOST});
 
         let upstream = UdpSocket::bind("0.0.0.0:0").expect("bind upstream socket");
         upstream
@@ -81,6 +82,7 @@ impl AvatarOsc {
         let ext_oscjson = ext_oscjson::ExtOscJson::new();
 
         AvatarOsc {
+            ip: ip,
             osc_port: args.osc_port,
             upstream,
             ext_autopilot,
@@ -98,7 +100,7 @@ impl AvatarOsc {
     }
 
     pub fn handle_messages(&mut self) {
-        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let ip = self.ip;
         let listener =
             UdpSocket::bind(SocketAddr::new(ip, self.osc_port)).expect("bind listener socket");
 
