@@ -56,6 +56,7 @@ pub struct AvatarOsc {
     ext_tracking: ext_tracking::ExtTracking,
     multi: MultiProgress,
     avatar_file: Option<String>,
+    output_ip: IpAddr,
 }
 
 pub struct OscTrack {
@@ -67,11 +68,20 @@ pub struct OscTrack {
 
 impl AvatarOsc {
     pub fn new(args: Args, multi: MultiProgress) -> AvatarOsc {
-        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        // Parse the output IP address
+        let output_ip = match args.output_ip.parse::<IpAddr>() {
+            Ok(ip) => ip,
+            Err(_) => {
+                log::warn!("Invalid output IP address '{}', falling back to localhost", args.output_ip);
+                IpAddr::V4(Ipv4Addr::LOCALHOST)
+            }
+        };
+
+        log::info!("Sending OSC data to: {}", output_ip);
 
         let upstream = UdpSocket::bind("0.0.0.0:0").expect("bind upstream socket");
         upstream
-            .connect(SocketAddr::new(ip, args.vrc_port))
+            .connect(SocketAddr::new(output_ip, args.vrc_port))
             .expect("upstream connect");
 
         let ext_autopilot = ext_autopilot::ExtAutoPilot::new();
@@ -90,6 +100,7 @@ impl AvatarOsc {
             ext_tracking,
             multi,
             avatar_file: args.avatar,
+            output_ip,
         }
     }
 
@@ -98,7 +109,7 @@ impl AvatarOsc {
     }
 
     pub fn handle_messages(&mut self) {
-        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let ip = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
         let listener =
             UdpSocket::bind(SocketAddr::new(ip, self.osc_port)).expect("bind listener socket");
 
@@ -309,7 +320,7 @@ pub static INSTRUCTIONS_START: Lazy<Arc<str>> = Lazy::new(|| {
         "Instructions".color(Color::BrightYellow),
         "================================".color(Color::BrightBlue)
     )
-    .into()
+        .into()
 });
 
 pub static INSTRUCTIONS_END: Lazy<Arc<str>> = Lazy::new(|| {
@@ -319,5 +330,5 @@ pub static INSTRUCTIONS_END: Lazy<Arc<str>> = Lazy::new(|| {
         "Instructions".color(Color::BrightYellow),
         "==".color(Color::BrightBlue)
     )
-    .into()
+        .into()
 });

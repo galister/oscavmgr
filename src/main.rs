@@ -67,4 +67,8 @@ pub struct Args {
     /// The OSC-JSON avatar file to use. See ~/.config/oscavmgr-avatar.json
     #[arg(long)]
     avatar: Option<String>,
+
+    /// IP address to send OSC data to (defaults to localhost)
+    #[arg(short = 'o', long = "output-ip", default_value = "127.0.0.1")]
+    output_ip: String,
 }
