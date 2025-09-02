@@ -23,7 +23,7 @@ chmod +x VrcAdvert oscavmgr
 
 or via Homebrew:
 ```bash
-brew tap shiloh/atomicxr https://codeberg.org/shiloh/homebrew-atomicxr.git
+brew tap matrixfurry.com/atomicxr https://tangled.sh/@matrixfurry.com/homebrew-atomicxr
 brew install vrc-advert
 brew install oscavmgr
 ```
