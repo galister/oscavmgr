@@ -58,7 +58,7 @@ pub struct ExtTracking {
 }
 
 impl ExtTracking {
-    pub fn new(setup: FaceSetup, ip: IpAddr) -> Self {
+    pub fn new(setup: FaceSetup, #[allow(unused_variables)] ip: IpAddr) -> Self {
         let default_combined = vec![
             CombinedExpression::BrowExpressionLeft,
             CombinedExpression::BrowExpressionRight,
