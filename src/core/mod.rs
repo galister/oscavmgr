@@ -78,7 +78,7 @@ impl AvatarOsc {
         let ext_autopilot = ext_autopilot::ExtAutoPilot::new();
         let ext_storage = ext_storage::ExtStorage::new();
         let ext_gogo = ext_gogo::ExtGogo::new();
-        let ext_tracking = ext_tracking::ExtTracking::new(args.face);
+        let ext_tracking = ext_tracking::ExtTracking::new(args.face, ip);
         let ext_oscjson = ext_oscjson::ExtOscJson::new();
 
         AvatarOsc {

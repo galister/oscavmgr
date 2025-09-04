@@ -3,6 +3,7 @@ use std::{array, str::FromStr, sync::Arc};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rosc::{OscBundle, OscType};
+use std::net::{IpAddr};
 use sranipal::SRanipalExpression;
 
 use crate::FaceSetup;
@@ -57,7 +58,7 @@ pub struct ExtTracking {
 }
 
 impl ExtTracking {
-    pub fn new(setup: FaceSetup) -> Self {
+    pub fn new(setup: FaceSetup, #[allow(unused_variables)] ip: IpAddr) -> Self {
         let default_combined = vec![
             CombinedExpression::BrowExpressionLeft,
             CombinedExpression::BrowExpressionRight,
@@ -121,7 +122,7 @@ impl ExtTracking {
             #[cfg(feature = "openxr")]
             FaceSetup::Openxr => Box::new(OpenXrReceiver::new()),
             #[cfg(feature = "babble")]
-            FaceSetup::Babble { listen } => Box::new(BabbleEtvrReceiver::new(listen)),
+            FaceSetup::Babble { listen } => Box::new(BabbleEtvrReceiver::new(ip, listen)),
         };
 
         let mut me = Self {
