@@ -118,7 +118,10 @@ impl FaceReceiver for BabbleEtvrReceiver {
         log::info!("");
         log::info!("{}", *INSTRUCTIONS_END);
 
+        log::info!("Babble and/or eyetracking listening on: {}:{}", ip, listen_port);
+
         thread::spawn(move || babble_loop(ip, listen_port, sender));
+
     }
 
     fn receive(&mut self, data: &mut UnifiedTrackingData, state: &mut AppState) {
