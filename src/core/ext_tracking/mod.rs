@@ -3,8 +3,8 @@ use std::{array, str::FromStr, sync::Arc};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rosc::{OscBundle, OscType};
-use std::net::{IpAddr};
 use sranipal::SRanipalExpression;
+use std::net::IpAddr;
 
 use crate::FaceSetup;
 
@@ -122,7 +122,9 @@ impl ExtTracking {
             #[cfg(feature = "openxr")]
             FaceSetup::Openxr => Box::new(OpenXrReceiver::new()),
             #[cfg(feature = "babble")]
-            FaceSetup::Babble { listen } => Box::new(BabbleEtvrReceiver::new(ip, listen)),
+            FaceSetup::Babble { listen, invert } => {
+                Box::new(BabbleEtvrReceiver::new(ip, listen, invert))
+            }
         };
 
         let mut me = Self {

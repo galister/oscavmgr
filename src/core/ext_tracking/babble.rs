@@ -11,7 +11,7 @@ use std::{
 
 use colored::{Color, Colorize};
 use once_cell::sync::Lazy;
-use rosc::{OscPacket, OscType};
+use rosc::{OscMessage, OscPacket, OscType};
 
 use crate::core::{
     ext_tracking::unified::UnifiedExpressions, AppState, INSTRUCTIONS_END, INSTRUCTIONS_START,
@@ -28,6 +28,7 @@ static STA_ETVR0: Lazy<Arc<str>> = Lazy::new(|| format!("{}", "ETVR".color(Color
 pub(super) struct BabbleEtvrReceiver {
     ip: IpAddr,
     listen_port: u16,
+    invertOpenness: bool,
     sender: SyncSender<Box<BabbleEtvrEvent>>,
     receiver: Receiver<Box<BabbleEtvrEvent>>,
     last_received_babble: Instant,
@@ -35,11 +36,12 @@ pub(super) struct BabbleEtvrReceiver {
 }
 
 impl BabbleEtvrReceiver {
-    pub fn new(ip: IpAddr, listen_port: u16) -> Self {
+    pub fn new(ip: IpAddr, listen_port: u16, invertOpenness: bool) -> Self {
         let (sender, receiver) = sync_channel(128);
         Self {
             ip,
             listen_port,
+            invertOpenness,
             sender,
             receiver,
             last_received_babble: Instant::now(),
@@ -54,6 +56,7 @@ impl FaceReceiver for BabbleEtvrReceiver {
 
         let ip = self.ip;
         let listen_port = self.listen_port;
+        let invertOpenness = self.invertOpenness;
 
         let babble_recv_port = listen_port + 10;
         let babble_http_port = babble_recv_port + 1;
@@ -118,10 +121,13 @@ impl FaceReceiver for BabbleEtvrReceiver {
         log::info!("");
         log::info!("{}", *INSTRUCTIONS_END);
 
-        log::info!("Babble and/or eyetracking listening on: {}:{}", ip, listen_port);
+        log::info!(
+            "Babble and/or eyetracking listening on: {}:{}",
+            ip,
+            listen_port
+        );
 
-        thread::spawn(move || babble_loop(ip, listen_port, sender));
-
+        thread::spawn(move || babble_loop(ip, listen_port, invertOpenness, sender));
     }
 
     fn receive(&mut self, data: &mut UnifiedTrackingData, state: &mut AppState) {
@@ -149,9 +155,14 @@ impl FaceReceiver for BabbleEtvrReceiver {
     }
 }
 
-fn babble_loop(ip: IpAddr, listen_port: u16, mut sender: SyncSender<Box<BabbleEtvrEvent>>) {
+fn babble_loop(
+    ip: IpAddr,
+    listen_port: u16,
+    invertOpenness: bool,
+    mut sender: SyncSender<Box<BabbleEtvrEvent>>,
+) {
     loop {
-        if let Some(()) = receive_babble_osc(ip, listen_port, &mut sender) {
+        if let Some(()) = receive_babble_osc(ip, listen_port, invertOpenness, &mut sender) {
             break;
         } else {
             thread::sleep(Duration::from_millis(5000));
@@ -162,28 +173,86 @@ fn babble_loop(ip: IpAddr, listen_port: u16, mut sender: SyncSender<Box<BabbleEt
 fn receive_babble_osc(
     ip: IpAddr,
     listen_port: u16,
+    invertOpenness: bool,
     sender: &mut SyncSender<Box<BabbleEtvrEvent>>,
 ) -> Option<()> {
     let listener = UdpSocket::bind(SocketAddr::new(ip, listen_port)).expect("bind listener socket");
+
     let mut buf = [0u8; rosc::decoder::MTU];
+
     loop {
-        if let Ok((size, _addr)) = listener.recv_from(&mut buf) {
-            if let Ok((_, OscPacket::Message(packet))) = rosc::decoder::decode_udp(&buf[..size]) {
-                if packet.args.is_empty() {
-                    log::warn!("Babble/ETVR OSC Message has no args?");
-                } else if let OscType::Float(x) = packet.args[0] {
-                    if let Some(expv) = ADDR_TO_UNIFIED.get(packet.addr.as_str()).cloned() {
-                        for exp in expv.iter() {
-                            let event = Box::new(BabbleEtvrEvent::new(*exp, x));
-                            if let Err(e) = sender.try_send(event) {
-                                log::warn!("Failed to send Babble/ETVR message: {}", e);
-                            }
-                        }
-                    }
-                } else {
-                    log::warn!("Babble/ETVR OSC: Unsupported arg {:?}", packet.args[0]);
-                }
+        match listener.recv_from(&mut buf) {
+            Ok((size, _addr)) => {
+                process_udp_data(&buf[..size], invertOpenness, sender);
             }
+            Err(e) => {
+                log::warn!("Babble/ETVR OSC: recv_from failed: {}", e);
+            }
+        }
+    }
+}
+
+fn process_udp_data(
+    data: &[u8],
+    invertOpenness: bool,
+    sender: &mut SyncSender<Box<BabbleEtvrEvent>>,
+) {
+    match rosc::decoder::decode_udp(data) {
+        Ok((_, OscPacket::Message(msg))) => process_osc_message(msg, invertOpenness, sender),
+        Ok((_addr, _other)) => {
+            log::warn!("Babble/ETVR OSC: non-message packet received");
+        }
+        Err(e) => {
+            log::warn!("Babble/ETVR OSC: failed to decode packet: {}", e);
+        }
+    }
+}
+
+// Handle a single OSC message and send corresponding events over a channel
+fn process_osc_message(
+    msg: OscMessage, // The decoded OSC message (address + args)
+    invertOpenness: bool,
+    sender: &mut SyncSender<Box<BabbleEtvrEvent>>, // Sync channel sender for event objects
+) {
+    // Try to extract the first argument of the OSC message as an f32
+    let value = match msg.args.first() {
+        Some(OscType::Float(x)) => *x, // If first arg is a Float, copy the value into `value`
+        Some(other) => {
+            // If there is an argument but it’s not a Float
+            log::warn!("Babble/ETVR OSC: unsupported arg {:?}", other); // Log a warning about wrong type
+            return; // Abort processing this message
+        }
+        None => {
+            // If there are no arguments at all
+            log::warn!("Babble/ETVR OSC message has no args"); // Log a warning about missing args
+            return; // Abort processing this message
+        }
+    };
+
+    // Look up the list of mapped expressions for this OSC address
+    let Some(expv) = ADDR_TO_UNIFIED.get(msg.addr.as_str()) else {
+        // If the address is unknown (not in the map), ignore this message and return
+        return;
+    };
+
+    // For each expression ID associated with this address
+    for &exp in expv {
+        let modded_value = if invertOpenness
+            && matches!(
+                exp,
+                UnifiedExpressions::EyeClosedLeft | UnifiedExpressions::EyeClosedRight
+            ) {
+            1.0f32 - value // invert
+        } else {
+            value
+        };
+
+        // Create a new BabbleEtvrEvent with this expression ID and the float value
+        let event = Box::new(BabbleEtvrEvent::new(exp, modded_value));
+        // Try to send the boxed event over the synchronous channel without blocking
+        if let Err(e) = sender.try_send(event) {
+            // If the send fails (e.g., channel full or closed), log a warning
+            log::warn!("Failed to send Babble/ETVR message: {}", e);
         }
     }
 }

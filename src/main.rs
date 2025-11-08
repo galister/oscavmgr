@@ -45,6 +45,10 @@ pub enum FaceSetup {
         /// The port to listen on for Babble and ETVR packets.
         #[arg(short, long, default_value = "9400")]
         listen: u16,
+
+        /// Inverts eye openness, because it is inverted for some reason
+        #[arg(long, default_value_t = false)]
+        invert: bool,
     },
 }
 
