@@ -115,13 +115,6 @@ impl UnifiedTrackingData {
                 * 0.5,
         );
 
-        self.setc(
-            CombinedExpression::EyeSquint,
-            (self.getu(UnifiedExpressions::EyeSquintLeft)
-                + self.getu(UnifiedExpressions::EyeSquintRight))
-                * 0.5,
-        );
-
         let brow_down_left = self.getu(UnifiedExpressions::BrowLowererLeft) * 0.75
             + self.getu(UnifiedExpressions::BrowPinchLeft) * 0.25;
         let brow_down_right = self.getu(UnifiedExpressions::BrowLowererRight) * 0.75
@@ -159,6 +152,8 @@ impl UnifiedTrackingData {
             (brow_exp_left + brow_exp_right) * 0.5,
         );
 
+        let ape_faceness = self.getu(UnifiedExpressions::MouthClosed) * 0.75;
+
         let mouth_smile_left = self.getu(UnifiedExpressions::MouthCornerPullLeft) * 0.75
             + self.getu(UnifiedExpressions::MouthCornerSlantLeft) * 0.25;
         let mouth_smile_right = self.getu(UnifiedExpressions::MouthCornerPullRight) * 0.75
@@ -169,10 +164,40 @@ impl UnifiedTrackingData {
         let mouth_sad_right = self.getu(UnifiedExpressions::MouthFrownRight) * 0.75
             + self.getu(UnifiedExpressions::MouthStretchRight) * 0.25;
 
-        self.setc(CombinedExpression::MouthSmileLeft, mouth_smile_left);
-        self.setc(CombinedExpression::MouthSmileRight, mouth_smile_right);
-        self.setc(CombinedExpression::MouthSadLeft, mouth_sad_left);
-        self.setc(CombinedExpression::MouthSadRight, mouth_sad_right);
+        self.setu(
+            UnifiedExpressions::EyeSquintLeft,
+            (self.getu(UnifiedExpressions::EyeSquintLeft) + mouth_smile_left * 0.6).min(1.0)
+                * left_eye_openness,
+        );
+        self.setu(
+            UnifiedExpressions::EyeSquintRight,
+            (self.getu(UnifiedExpressions::EyeSquintRight) + mouth_smile_right * 0.6).min(1.0)
+                * right_eye_openness,
+        );
+
+        self.setc(
+            CombinedExpression::EyeSquint,
+            (self.getu(UnifiedExpressions::EyeSquintLeft)
+                + self.getu(UnifiedExpressions::EyeSquintRight))
+                * 0.5,
+        );
+
+        self.setc(
+            CombinedExpression::MouthSmileLeft,
+            mouth_smile_left * ape_faceness,
+        );
+        self.setc(
+            CombinedExpression::MouthSmileRight,
+            mouth_smile_right * ape_faceness,
+        );
+        self.setc(
+            CombinedExpression::MouthSadLeft,
+            mouth_sad_left * ape_faceness,
+        );
+        self.setc(
+            CombinedExpression::MouthSadRight,
+            mouth_sad_right * ape_faceness,
+        );
 
         self.setc(
             CombinedExpression::MouthUpperX,
@@ -188,29 +213,32 @@ impl UnifiedTrackingData {
 
         self.setc(
             CombinedExpression::SmileSadLeft,
-            mouth_smile_left - mouth_sad_left,
+            (mouth_smile_left - mouth_sad_left) * ape_faceness,
         );
         self.setc(
             CombinedExpression::SmileSadRight,
-            mouth_smile_right - mouth_sad_right,
+            (mouth_smile_right - mouth_sad_right) * ape_faceness,
         );
         self.setc(
             CombinedExpression::SmileSad,
-            (mouth_smile_left - mouth_sad_left + mouth_smile_right - mouth_sad_right) * 0.5,
+            (mouth_smile_left - mouth_sad_left + mouth_smile_right - mouth_sad_right)
+                * 0.5
+                * ape_faceness,
         );
         self.setc(
             CombinedExpression::SmileFrownLeft,
-            mouth_smile_left - self.getu(UnifiedExpressions::MouthFrownLeft),
+            mouth_smile_left - self.getu(UnifiedExpressions::MouthFrownLeft) + ape_faceness,
         );
         self.setc(
             CombinedExpression::SmileFrownRight,
-            mouth_smile_right - self.getu(UnifiedExpressions::MouthFrownRight),
+            mouth_smile_right - self.getu(UnifiedExpressions::MouthFrownRight) + ape_faceness,
         );
         self.setc(
             CombinedExpression::SmileFrown,
             (mouth_smile_left - self.getu(UnifiedExpressions::MouthFrownLeft) + mouth_smile_right
                 - self.getu(UnifiedExpressions::MouthFrownRight))
-                * 0.5,
+                * 0.5
+                + ape_faceness,
         );
         self.setc(
             CombinedExpression::CheekPuffSuckLeft,
