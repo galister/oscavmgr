@@ -11,32 +11,22 @@ Supported:
 
 ## Setting up to use with VRChat
 
-A helper software is **required**, in order to handle OscQuery for us: [galister/VrcAdvert](https://github.com/galister/VrcAdvert).
-
-Get latest OscAvMgr + VrcAdvert:
+Get latest OscAvMgr:
 
 ```bash
-wget -O VrcAdvert https://github.com/galister/VrcAdvert/releases/latest/download/VrcAdvert
 wget -O oscavmgr https://github.com/galister/oscavmgr/releases/latest/download/oscavmgr
-chmod +x VrcAdvert oscavmgr
+chmod +x oscavmgr
 ```
 
 or via Homebrew:
 ```bash
 brew tap matrixfurry.com/atomicxr https://tangled.sh/@matrixfurry.com/homebrew-atomicxr
-brew install vrc-advert
 brew install oscavmgr
 ```
 
-Recommended start script:
+Launch OscAvMgr:
 
 ```bash
-#!/usr/bin/env bash
-
-# stop VrcAdvert after OscAvMgr quits
-trap 'jobs -p | xargs kill' EXIT
-
-./VrcAdvert OscAvMgr 9402 9002 --tracking &
 
 # If using WiVRn
 ./oscavmgr openxr
