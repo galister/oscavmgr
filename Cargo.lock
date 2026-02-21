@@ -1966,18 +1966,17 @@ checksum = "2839e79665f131bdb5782e51f2c6c9599c133c6098982a54c794358bf432529c"
 
 [[package]]
 name = "openxr"
-version = "0.19.0"
-source = "git+https://github.com/galister/openxrs#17642d0ccac65dbf7e24da84db56cc500592afff"
+version = "0.22.0"
+source = "git+https://github.com/Ralith/openxrs.git?rev=d9bea09#d9bea09ebeb917d9eb252c3770fe77cb1175ad5f"
 dependencies = [
  "libc",
- "ndk-context",
  "openxr-sys",
 ]
 
 [[package]]
 name = "openxr-sys"
-version = "0.11.0"
-source = "git+https://github.com/galister/openxrs#17642d0ccac65dbf7e24da84db56cc500592afff"
+version = "0.14.0"
+source = "git+https://github.com/Ralith/openxrs.git?rev=d9bea09#d9bea09ebeb917d9eb252c3770fe77cb1175ad5f"
 dependencies = [
  "libc",
  "mint",
