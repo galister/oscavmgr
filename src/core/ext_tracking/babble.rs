@@ -242,6 +242,18 @@ static ADDR_TO_UNIFIED: Lazy<HashMap<&'static str, Vec<UnifiedExpressions>>> = L
         ("/mouthPressLeft", vec![UnifiedExpressions::MouthPressLeft]),
         ("/mouthPressRight", vec![UnifiedExpressions::MouthPressRight]),
 
+        // ProjectBabble Baballonia Eye Tracking
+        ("/LeftEyeX", vec![UnifiedExpressions::EyeLeftX]),
+        ("/RightEyeX", vec![UnifiedExpressions::EyeRightX]),
+        // TODO: ETVR only has one Y value for both eyes, but Babble has separate ones. 
+        // For now, only the left eye Y value is used for simplicity, 
+        // but maybe in the future we could do some kind of averaging or something to use both?
+        // if there's demand for it.
+        ("/LeftEyeY", vec![UnifiedExpressions::EyeY]),
+        // ("/RightEyeY", vec![UnifiedExpressions::EyeY]), 
+        ("/LeftEyeLid", vec![UnifiedExpressions::EyeClosedLeft]),
+        ("/RightEyeLid", vec![UnifiedExpressions::EyeClosedRight]),
+
         // ETVR
         ("/avatar/parameters/LeftEyeX", vec![UnifiedExpressions::EyeLeftX]),
         ("/avatar/parameters/RightEyeX", vec![UnifiedExpressions::EyeRightX]),
