@@ -21,6 +21,7 @@ use crate::Args;
 use self::bundle::AvatarBundle;
 
 mod bundle;
+mod ext_audio_reaction;
 mod ext_autopilot;
 mod ext_gogo;
 mod ext_oscjson;
@@ -52,6 +53,7 @@ pub struct AvatarOsc {
     osc_port: u16,
     upstream: UdpSocket,
     ext_autopilot: ext_autopilot::ExtAutoPilot,
+    ext_audio_reaction: ext_audio_reaction::ExtAudioReaction,
     ext_oscjson: ext_oscjson::ExtOscJson,
     ext_storage: ext_storage::ExtStorage,
     ext_gogo: ext_gogo::ExtGogo,
@@ -84,6 +86,7 @@ impl AvatarOsc {
             .expect("upstream connect");
 
         let ext_autopilot = ext_autopilot::ExtAutoPilot::new();
+        let ext_audio_reaction = ext_audio_reaction::ExtAudioReaction::new(args.audio_reaction);
         let ext_storage = ext_storage::ExtStorage::new();
         let ext_gogo = ext_gogo::ExtGogo::new();
         let ext_tracking = ext_tracking::ExtTracking::new(args.face);
@@ -94,6 +97,7 @@ impl AvatarOsc {
             osc_port: args.osc_port,
             upstream,
             ext_autopilot,
+            ext_audio_reaction,
             ext_oscjson,
             ext_storage,
             ext_gogo,
@@ -278,6 +282,7 @@ impl AvatarOsc {
         self.ext_storage.step(&mut bundle);
         self.ext_tracking.step(state, &mut bundle);
         self.ext_gogo.step(&state.params, &mut bundle);
+        self.ext_audio_reaction.step(state, &mut bundle);
         //self.ext_thumb_params.step(&mut bundle);
         self.ext_autopilot
             .step(state, &self.ext_tracking, &mut bundle);

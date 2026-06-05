@@ -18,6 +18,8 @@
           openssl
           gcc
           libiconv
+          pipewire
+          llvmPackages.libclang
           openxr-loader
           rust-analyzer
         ];
