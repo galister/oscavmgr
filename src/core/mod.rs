@@ -21,6 +21,7 @@ use crate::Args;
 use self::bundle::AvatarBundle;
 
 mod bundle;
+mod ext_audio_reaction;
 mod ext_autopilot;
 mod ext_gogo;
 mod ext_oscjson;
@@ -44,6 +45,7 @@ pub struct AppState {
     pub status: status::StatusBar,
     pub self_drive: Arc<AtomicBool>,
     pub delta_t: f32,
+    pub thumb_params: bool,
 }
 
 pub struct AvatarOsc {
@@ -51,12 +53,14 @@ pub struct AvatarOsc {
     osc_port: u16,
     upstream: UdpSocket,
     ext_autopilot: ext_autopilot::ExtAutoPilot,
+    ext_audio_reaction: ext_audio_reaction::ExtAudioReaction,
     ext_oscjson: ext_oscjson::ExtOscJson,
     ext_storage: ext_storage::ExtStorage,
     ext_gogo: ext_gogo::ExtGogo,
     ext_tracking: ext_tracking::ExtTracking,
     multi: MultiProgress,
     avatar_file: Option<String>,
+    thumb_params: bool,
 }
 
 pub struct OscTrack {
@@ -64,11 +68,17 @@ pub struct OscTrack {
     pub left_hand: Affine3A,
     pub right_hand: Affine3A,
     pub last_received: Instant,
+    pub thumb_buttons: [f32; 10],
+    pub controller_type: String,
 }
 
 impl AvatarOsc {
     pub fn new(args: Args, multi: MultiProgress) -> AvatarOsc {
-        let ip = IpAddr::V4(if args.expose {Ipv4Addr::UNSPECIFIED} else {Ipv4Addr::LOCALHOST});
+        let ip = IpAddr::V4(if args.expose {
+            Ipv4Addr::UNSPECIFIED
+        } else {
+            Ipv4Addr::LOCALHOST
+        });
 
         let upstream = UdpSocket::bind("0.0.0.0:0").expect("bind upstream socket");
         upstream
@@ -76,6 +86,7 @@ impl AvatarOsc {
             .expect("upstream connect");
 
         let ext_autopilot = ext_autopilot::ExtAutoPilot::new();
+        let ext_audio_reaction = ext_audio_reaction::ExtAudioReaction::new(args.audio_reaction);
         let ext_storage = ext_storage::ExtStorage::new();
         let ext_gogo = ext_gogo::ExtGogo::new();
         let ext_tracking = ext_tracking::ExtTracking::new(args.face);
@@ -86,12 +97,14 @@ impl AvatarOsc {
             osc_port: args.osc_port,
             upstream,
             ext_autopilot,
+            ext_audio_reaction,
             ext_oscjson,
             ext_storage,
             ext_gogo,
             ext_tracking,
             multi,
             avatar_file: args.avatar,
+            thumb_params: args.thumb_params,
         }
     }
 
@@ -116,9 +129,12 @@ impl AvatarOsc {
                 left_hand: Affine3A::IDENTITY,
                 right_hand: Affine3A::IDENTITY,
                 last_received: Instant::now(),
+                thumb_buttons: [0.0; 10],
+                controller_type: "Pending".to_string(),
             },
             self_drive: Arc::new(AtomicBool::new(true)),
             delta_t: 0.011f32,
+            thumb_params: self.thumb_params,
         };
 
         let watchdog = watchdog::Watchdog::new(state.self_drive.clone());
@@ -266,6 +282,8 @@ impl AvatarOsc {
         self.ext_storage.step(&mut bundle);
         self.ext_tracking.step(state, &mut bundle);
         self.ext_gogo.step(&state.params, &mut bundle);
+        self.ext_audio_reaction.step(state, &mut bundle);
+        //self.ext_thumb_params.step(&mut bundle);
         self.ext_autopilot
             .step(state, &self.ext_tracking, &mut bundle);
 

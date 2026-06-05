@@ -71,4 +71,12 @@ pub struct Args {
     /// The OSC-JSON avatar file to use. See ~/.config/oscavmgr-avatar.json
     #[arg(long)]
     avatar: Option<String>,
+
+    // Thumbparams toggle option
+    #[arg(long, default_value_t = false)]
+    thumb_params: bool,
+
+    /// Capture the default PipeWire sink and send avatar audio reaction parameters
+    #[arg(long, default_value_t = false)]
+    audio_reaction: bool,
 }

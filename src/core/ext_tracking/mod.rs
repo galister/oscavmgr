@@ -5,7 +5,7 @@ use regex::Regex;
 use rosc::{OscBundle, OscType};
 use sranipal::SRanipalExpression;
 
-use crate::FaceSetup;
+use crate::{core::bundle::AvatarBundle, FaceSetup};
 
 #[cfg(feature = "alvr")]
 use self::alvr::AlvrReceiver;
@@ -38,6 +38,29 @@ mod openxr;
 mod sranipal;
 pub mod unified;
 
+#[repr(usize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, EnumCount)]
+enum ThumbAction {
+    LeftButtonA = 0,
+    LeftButtonB = 1,
+    LeftButtonTrackpad = 2,
+    LeftButtonThumbstick = 3,
+    LeftTrigger = 4,
+    RightButtonA = 5,
+    RightButtonB = 6,
+    RightButtonTrackpad = 7,
+    RightButtonThumbstick = 8,
+    RightTrigger = 9,
+}
+
+struct ThumbStates {
+    left_thumb: Option<i32>,
+    right_thumb: Option<i32>,
+    left_trigger: Option<f32>,
+    right_trigger: Option<f32>,
+    controller_type: Option<i32>,
+}
+
 trait FaceReceiver {
     fn start_loop(&mut self);
     fn receive(&mut self, _data: &mut UnifiedTrackingData, _: &mut AppState);
@@ -54,6 +77,7 @@ pub struct ExtTracking {
     pub data: UnifiedTrackingData,
     params: [Option<MysteryParam>; NUM_SHAPES],
     receiver: Box<dyn FaceReceiver>,
+    thumb_states: ThumbStates,
 }
 
 impl ExtTracking {
@@ -128,6 +152,13 @@ impl ExtTracking {
             data: UnifiedTrackingData::default(),
             params,
             receiver,
+            thumb_states: ThumbStates {
+                left_thumb: None,
+                right_thumb: None,
+                left_trigger: None,
+                right_trigger: None,
+                controller_type: None,
+            },
         };
 
         log::info!("--- Default params ---");
@@ -159,6 +190,96 @@ impl ExtTracking {
         }
 
         self.data.apply_to_bundle(&mut self.params, bundle);
+
+        if state.thumb_params {
+            // Send controller type
+            let controller_type_int = match state.tracking.controller_type.as_str() {
+                "Valve Index" => 1,
+                "Meta Quest Touch" => 2,
+                _ => 0, // Other/Pending
+            };
+            log::debug!(
+                "Sending ControllerType: {} ({})",
+                state.tracking.controller_type,
+                controller_type_int
+            );
+
+            // Send thumb buttons with button mapping logic
+            // Left hand buttons: indices 0-4 (A, B, Trackpad, Thumbstick, Trigger)
+            // Right hand buttons: indices 5-9 (A, B, Trackpad, Thumbstick, Trigger)
+
+            // Left thumb: determine which button is pressed
+            let mut left_thumb_value = 0i32;
+            if state.tracking.thumb_buttons[ThumbAction::LeftButtonA as usize] > 0.1 {
+                left_thumb_value = 1; // Button A
+            }
+            if state.tracking.thumb_buttons[ThumbAction::LeftButtonB as usize] > 0.1 {
+                left_thumb_value = 2; // Button B (priority over A)
+            }
+            if state.tracking.thumb_buttons[ThumbAction::LeftButtonTrackpad as usize] > 0.1 {
+                left_thumb_value = 3; // Trackpad
+            }
+            if state.tracking.thumb_buttons[ThumbAction::LeftButtonThumbstick as usize] > 0.1 {
+                left_thumb_value = 4; // Thumbstick
+            }
+
+            // Right thumb: determine which button is pressed
+            let mut right_thumb_value = 0i32;
+            if state.tracking.thumb_buttons[ThumbAction::RightButtonA as usize] > 0.1 {
+                right_thumb_value = 1; // Button A
+            }
+            if state.tracking.thumb_buttons[ThumbAction::RightButtonB as usize] > 0.1 {
+                right_thumb_value = 2; // Button B (priority over A)
+            }
+            if state.tracking.thumb_buttons[ThumbAction::RightButtonTrackpad as usize] > 0.1 {
+                right_thumb_value = 3; // Trackpad
+            }
+            if state.tracking.thumb_buttons[ThumbAction::RightButtonThumbstick as usize] > 0.1 {
+                right_thumb_value = 4; // Thumbstick
+            }
+
+            // Send values only if they have changed
+            // Controller type as int
+            if self.thumb_states.controller_type != Some(controller_type_int) {
+                self.thumb_states.controller_type = Some(controller_type_int);
+                bundle.send_parameter("ControllerType", OscType::Int(controller_type_int));
+            }
+
+            // Send thumb button states as ints
+            if self.thumb_states.left_thumb != Some(left_thumb_value) {
+                self.thumb_states.left_thumb = Some(left_thumb_value);
+                bundle.send_parameter("LeftThumb", OscType::Int(left_thumb_value));
+            }
+
+            if self.thumb_states.right_thumb != Some(right_thumb_value) {
+                self.thumb_states.right_thumb = Some(right_thumb_value);
+                bundle.send_parameter("RightThumb", OscType::Int(right_thumb_value));
+            }
+
+            // Send triggers as floats
+            if self.thumb_states.right_trigger
+                != Some(state.tracking.thumb_buttons[ThumbAction::RightTrigger as usize])
+            {
+                self.thumb_states.right_trigger =
+                    Some(state.tracking.thumb_buttons[ThumbAction::RightTrigger as usize]);
+                bundle.send_parameter(
+                    "RightTrigger",
+                    OscType::Float(
+                        state.tracking.thumb_buttons[ThumbAction::RightTrigger as usize],
+                    ),
+                );
+            }
+            if self.thumb_states.left_trigger
+                != Some(state.tracking.thumb_buttons[ThumbAction::LeftTrigger as usize])
+            {
+                self.thumb_states.left_trigger =
+                    Some(state.tracking.thumb_buttons[ThumbAction::LeftTrigger as usize]);
+                bundle.send_parameter(
+                    "LeftTrigger",
+                    OscType::Float(state.tracking.thumb_buttons[ThumbAction::LeftTrigger as usize]),
+                );
+            }
+        }
     }
 
     pub fn osc_json(&mut self, avatar_node: &OscJsonNode) {
@@ -171,6 +292,13 @@ impl ExtTracking {
 
         self.process_node_recursive("parameters", parameters);
         self.print_params();
+        self.thumb_states = ThumbStates {
+            left_thumb: None,
+            right_thumb: None,
+            left_trigger: None,
+            right_trigger: None,
+            controller_type: None,
+        };
     }
 
     fn process_node_recursive(&mut self, name: &str, node: &OscJsonNode) -> Option<()> {

@@ -1,0 +1,6 @@
+{
+    "sonarlint.connectedMode.project": {
+        "connectionId": "https-sonarqube-raven-ip-com",
+        "projectKey": "oscavmgr"
+    }
+}
