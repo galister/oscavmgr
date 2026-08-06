@@ -17,7 +17,7 @@ use glam::Vec3;
 use once_cell::sync::Lazy;
 use strum::EnumCount;
 use sysinfo::ProcessesToUpdate;
-use websocket_lite::{ClientBuilder, Message, Opcode};
+use websocket::{header::Headers, message::OwnedMessage, ClientBuilder, Message};
 
 use crate::core::{
     ext_tracking::face2_fb::face2_fb_to_unified, AppState, INSTRUCTIONS_END, INSTRUCTIONS_START,
@@ -112,23 +112,16 @@ impl FaceReceiver for AlvrReceiver {
             }
 
             if let Some(head) = new_data.head {
-                state.tracking.head =
-                    glam::Affine3A::from_rotation_translation(head.orientation, head.position);
+                state.tracking.head = to_affine3a(head);
                 state.tracking.last_received = Instant::now();
             }
 
             if let Some(left_hand) = new_data.hands[0] {
-                state.tracking.left_hand = glam::Affine3A::from_rotation_translation(
-                    left_hand.orientation,
-                    left_hand.position,
-                );
+                state.tracking.left_hand = to_affine3a(left_hand);
             }
 
             if let Some(right_hand) = new_data.hands[1] {
-                state.tracking.right_hand = glam::Affine3A::from_rotation_translation(
-                    right_hand.orientation,
-                    right_hand.position,
-                );
+                state.tracking.right_hand = to_affine3a(right_hand);
             }
         }
 
@@ -145,6 +138,10 @@ impl FaceReceiver for AlvrReceiver {
 fn quat_to_euler(q: Quat) -> Vec3 {
     let (y, x, z) = q.to_euler(EulerRot::YXZ);
     Vec3 { x, y, z }
+}
+
+fn to_affine3a(pose: Pose) -> glam::Affine3A {
+    glam::Affine3A::from_rotation_translation(pose.orientation, pose.position)
 }
 
 const VR_PROCESSES: [&str; 6] = [
@@ -176,27 +173,24 @@ fn receive_until_err(
     system: &mut sysinfo::System,
 ) -> anyhow::Result<()> {
     const WS_URL: &str = "ws://127.0.0.1:8082/api/events";
-    let mut builder = ClientBuilder::new(WS_URL)?;
-    builder.add_header("X-ALVR".to_string(), "true".to_string());
+    let mut headers = Headers::new();
+    headers.set_raw("X-ALVR", vec![b"true".to_vec()]);
+    let mut builder = ClientBuilder::new(WS_URL)?.custom_headers(&headers);
     let Ok(mut ws) = builder.connect_insecure() else {
         return Ok(()); // long retry
     };
 
-    while let Ok(Some(message)) = ws.receive() {
-        match message.opcode() {
-            Opcode::Close => {
-                let _ = ws.send(Message::close(None));
+    while let Ok(message) = ws.recv_message() {
+        match message {
+            OwnedMessage::Close(_) => {
+                let _ = ws.send_message(&Message::close());
                 bail!("connection closed");
             }
-            Opcode::Ping => {
-                let _ = ws.send(Message::pong(message.into_data()));
+            OwnedMessage::Ping(data) => {
+                let _ = ws.send_message(&Message::pong(data));
             }
-            Opcode::Text => {
-                let Some(text) = message.as_text() else {
-                    log::warn!("websocket: no content");
-                    continue;
-                };
-                match serde_json::from_str::<alvr_events::Event>(text) {
+            OwnedMessage::Text(text) => {
+                match serde_json::from_str::<alvr_events::Event>(&text) {
                     Ok(msg) => {
                         match msg.event_type {
                             alvr_events::EventType::ServerRequestsSelfRestart => {
