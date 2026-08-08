@@ -27,6 +27,7 @@ mod ext_oscjson;
 mod ext_storage;
 mod ext_tracking;
 mod folders;
+mod oscquery;
 mod watchdog;
 
 pub mod status;
@@ -55,6 +56,7 @@ pub struct AvatarOsc {
     ext_storage: ext_storage::ExtStorage,
     ext_gogo: ext_gogo::ExtGogo,
     ext_tracking: ext_tracking::ExtTracking,
+    _oscquery: Option<oscquery::OscQueryAdvert>,
     multi: MultiProgress,
     avatar_file: Option<String>,
 }
@@ -80,6 +82,13 @@ impl AvatarOsc {
         let ext_gogo = ext_gogo::ExtGogo::new();
         let ext_tracking = ext_tracking::ExtTracking::new(args.face);
         let ext_oscjson = ext_oscjson::ExtOscJson::new();
+        let oscquery = match oscquery::OscQueryAdvert::new(args.osc_port) {
+            Ok(advert) => Some(advert),
+            Err(e) => {
+                log::warn!("Failed to start OSCQuery: {e:#}");
+                None
+            }
+        };
 
         AvatarOsc {
             ip: ip,
@@ -90,6 +99,7 @@ impl AvatarOsc {
             ext_storage,
             ext_gogo,
             ext_tracking,
+            _oscquery: oscquery,
             multi,
             avatar_file: args.avatar,
         }

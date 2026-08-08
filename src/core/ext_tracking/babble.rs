@@ -109,7 +109,6 @@ impl FaceReceiver for BabbleEtvrReceiver {
         );
         log::info!("");
         log::info!("To use AutoPilot:");
-        log::info!("• Run OscAvMgr's VrcAdvert with --tracking");
         log::info!("• In VRChat Settings/Tracking & IK: enable sending of Head and Wrist data");
         log::info!("");
         log::info!("{}", *INSTRUCTIONS_END);

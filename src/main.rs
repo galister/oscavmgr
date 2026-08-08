@@ -64,7 +64,7 @@ pub struct Args {
     #[arg(long, default_value = "9000")]
     vrc_port: u16,
 
-    /// OSC listen port. Set this same port for VrcAdvert's osc_port!
+    /// OSC listen port
     #[arg(long, default_value = "9002")]
     osc_port: u16,
 

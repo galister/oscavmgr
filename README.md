@@ -9,44 +9,39 @@ Supported:
 - Project Babble
 - EyeTrackVR
 
-## Setting up to use with VRChat
+## Installation
 
-A helper software is **required**, in order to handle OscQuery for us: [galister/VrcAdvert](https://github.com/galister/VrcAdvert).
+OscAvMgr advertises itself to VRChat through OSCQuery. **VrcAdvert is no longer needed**!
 
-Get latest OscAvMgr + VrcAdvert:
+**AUR**: `oscavmgr-git`
 
+**Cargo (Rust 1.86+)**:
 ```bash
-wget -O VrcAdvert https://github.com/galister/VrcAdvert/releases/latest/download/VrcAdvert
-wget -O oscavmgr https://github.com/galister/oscavmgr/releases/latest/download/oscavmgr
-chmod +x VrcAdvert oscavmgr
+cargo install --git https://github.com/galister/oscavmgr.git
 ```
 
-or via Homebrew:
+**Homebrew**:
 ```bash
 brew tap matrixfurry.com/atomicxr https://tangled.sh/@matrixfurry.com/homebrew-atomicxr
-brew install vrc-advert
 brew install oscavmgr
 ```
 
-Recommended start script:
+Or grab the portable binary from releases!
+
+## Starting
 
 ```bash
-#!/usr/bin/env bash
-
-# stop VrcAdvert after OscAvMgr quits
-trap 'jobs -p | xargs kill' EXIT
-
-./VrcAdvert OscAvMgr 9402 9002 --tracking &
-
 # If using WiVRn
-./oscavmgr openxr
+oscavmgr openxr
 
 ## If using ALVR
-#./oscavmgr alvr
+oscavmgr alvr
 
 ## If using Project Babble and/or EyeTrackVR
-#./oscavmgr babble
+oscavmgr babble
 ```
+
+## Using with VRChat
 
 Once OscAvMgr is started, it will print further instructions to the terminal.
 
