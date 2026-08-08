@@ -70,7 +70,11 @@ pub struct OscTrack {
 
 impl AvatarOsc {
     pub fn new(args: Args, multi: MultiProgress) -> AvatarOsc {
-        let ip = IpAddr::V4(if args.expose {Ipv4Addr::UNSPECIFIED} else {Ipv4Addr::LOCALHOST});
+        let ip = IpAddr::V4(if args.expose {
+            Ipv4Addr::UNSPECIFIED
+        } else {
+            Ipv4Addr::LOCALHOST
+        });
 
         let upstream = UdpSocket::bind("0.0.0.0:0").expect("bind upstream socket");
         upstream
@@ -91,7 +95,7 @@ impl AvatarOsc {
         };
 
         AvatarOsc {
-            ip: ip,
+            ip,
             osc_port: args.osc_port,
             upstream,
             ext_autopilot,

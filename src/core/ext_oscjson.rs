@@ -1,4 +1,4 @@
-use log::{info, warn};
+use log::{debug, info, warn};
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use rosc::{OscBundle, OscType};
 use serde::{Deserialize, Serialize};
@@ -108,7 +108,8 @@ impl ExtOscJson {
         match serde_json::from_str(&json) {
             Ok(root_node) => Some(root_node),
             Err(e) => {
-                warn!("Failed to deserialize avatar json: {}", e);
+                warn!("Failed to deserialize avatar json: {}\n", e);
+                debug!("{}", json);
                 None
             }
         }
