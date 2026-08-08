@@ -11,10 +11,7 @@ log = "0.4.25"
 mdns-sd = "0.13.2"
 once_cell = "1.20.0"
 regex = "1.11.1"
-reqwest = { version = "0.12.12", features = [
-  "blocking",
-  "charset",
-], default-features = false }
+reqwest = { version = "0.12.12", features = ["blocking", "charset"], default-features = false }
 rosc = "0.10.1"
 serde = { version = "1.0.217", features = ["derive", "rc"] }
 serde_json = "1.0.138"
@@ -26,21 +23,13 @@ anyhow = "1.0.95"
 indicatif = "=0.18.6"
 indicatif-log-bridge = "=0.2.3"
 colored = "3.0.0"
-openxr = { git = "https://github.com/galister/openxrs", default-features = false, features = [
-  "linked",
-  "mint",
-], optional = true }
+openxr = { git = "https://github.com/galister/openxrs", default-features = false, features = ["linked", "mint"], optional = true }
 mint = "0.5.9"
 clap = { version = "4.5.28", features = ["derive"] }
 websocket = { version = "0.27.1", default-features = false, features = ["sync"] }
 
 [features]
 default = ["alvr", "openxr", "babble"]
-alvr = [
-  "dep:alvr_events",
-  "dep:alvr_common",
-  "dep:sysinfo",
-
-]
+alvr = ["dep:alvr_events", "dep:alvr_common", "dep:sysinfo"]
 openxr = ["dep:openxr"]
 babble = []
