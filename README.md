@@ -5,7 +5,8 @@ This is a personal project that includes a face tracking relay (VRCFT replacemen
 Supported:
 
 - Quest Pro (eye + face)
-- Pico 4 Pro, HTC (eye only)
+- Pico 4 Pro/Enterprise (eye + face)
+- HTC XR Elite (eye only)
 - Project Babble
 - EyeTrackVR
 
@@ -112,8 +113,6 @@ With the mod enabled, simply start OscAvMgr.
 A set of DynamicValueVariables will be created for you. Use them to drive your choice of blendshapes. (Network syncing is already handled for you).
 
 If you are starting up Resonite after using VRC, you will need to restart OscAvMgr, or it will keep sending the set of parameters from your last VRC avatar!
-
-**Pico 4 Pro Users**: Your eyes will be always closed. To fix this, remove the eyelid blendshapes from your EyeManager, and create a second EyeManager (not driven by OscAvMgr) to drive the eyelids.
 
 ## Building from Source
 
