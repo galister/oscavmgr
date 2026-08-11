@@ -72,15 +72,6 @@ impl FaceReceiver for BabbleEtvrReceiver {
             "Receiver Port".color(Color::BrightYellow),
             format!("{}", babble_recv_port).color(Color::Cyan),
         );
-        log::info!(
-            "• Start: {}",
-            format!(
-                "./VrcAdvert babble {} {}",
-                babble_http_port, babble_recv_port
-            )
-            .on_color(Color::White)
-            .color(Color::Black)
-        );
         log::info!("");
         log::info!("For ETVR:");
         log::info!(
@@ -92,12 +83,6 @@ impl FaceReceiver for BabbleEtvrReceiver {
             "• Set {} to {}",
             "OSC Receiver Port".color(Color::BrightYellow),
             format!("{}", etvr_recv_port).color(Color::Cyan),
-        );
-        log::info!(
-            "• Start: {}",
-            format!("./VrcAdvert etvr {} {}", etvr_http_port, etvr_recv_port)
-                .on_color(Color::White)
-                .color(Color::Black)
         );
         log::info!("");
         log::info!("Status bar tickers:");
