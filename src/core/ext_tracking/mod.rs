@@ -1,6 +1,5 @@
 use std::{array, str::FromStr, sync::Arc};
 
-use alvr_common::FOCUS3_CONTROLLER_PROFILE_PATH;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rosc::{OscBundle, OscType};
