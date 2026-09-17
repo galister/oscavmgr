@@ -1,5 +1,6 @@
 use std::{array, str::FromStr, sync::Arc};
 
+use alvr_common::FOCUS3_CONTROLLER_PROFILE_PATH;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rosc::{OscBundle, OscType};
@@ -173,9 +174,24 @@ impl ExtTracking {
         self.print_params();
     }
 
+    fn should_ignore_path(&self, node: &OscJsonNode) -> bool {
+        let ignored_paths = vec!["OSCm"];
+        let full_path = node.full_path.as_ref();
+        for ignored_path in ignored_paths {
+            if full_path.contains(ignored_path) {
+                return true;
+            }
+        }
+        false
+    }
+
     fn process_node_recursive(&mut self, name: &str, node: &OscJsonNode) -> Option<()> {
         static FT_PARAMS_REGEX: Lazy<Regex> =
             Lazy::new(|| Regex::new(r"^(.+?)(Negative|\d+)?$").unwrap());
+
+        if self.should_ignore_path(node) {
+            return None;
+        }
 
         if let Some(contents) = node.contents.as_ref() {
             log::debug!("Checking {}", name);
