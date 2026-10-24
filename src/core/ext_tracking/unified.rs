@@ -115,12 +115,11 @@ impl UnifiedTrackingData {
                 * 0.5,
         );
 
-	self.setc(
-	    CombinedExpression::EyeX,
-	    (self.getu(UnifiedExpressions::EyeLeftX)
-		+ self.getu(UnifiedExpressions::EyeRightX))
-		* 0.5,
-	);
+        self.setc(
+            CombinedExpression::EyeX,
+            (self.getu(UnifiedExpressions::EyeLeftX) + self.getu(UnifiedExpressions::EyeRightX))
+                * 0.5,
+        );
 
         let brow_down_left = self.getu(UnifiedExpressions::BrowLowererLeft) * 0.75
             + self.getu(UnifiedExpressions::BrowPinchLeft) * 0.25;
