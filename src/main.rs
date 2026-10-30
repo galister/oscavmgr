@@ -48,6 +48,19 @@ pub enum FaceSetup {
     },
 }
 
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum FtMode {
+    /// Native when the avatar reports Use All Tracking Keys, legacy parameters otherwise
+    #[default]
+    Auto,
+    /// Only send avatar parameters (VRCFT-style)
+    Legacy,
+    /// Only send VRChat native face tracking (/tracking/face/v1)
+    Native,
+    /// Send both native face tracking and avatar parameters
+    Both,
+}
+
 /// OSC Avatar Manager
 #[derive(Default, clap::Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -71,4 +84,8 @@ pub struct Args {
     /// The OSC-JSON avatar file to use. See ~/.config/oscavmgr-avatar.json
     #[arg(long)]
     avatar: Option<String>,
+
+    /// How face tracking is sent to VRC
+    #[arg(long, value_enum, default_value_t = FtMode::Auto)]
+    ft_mode: FtMode,
 }

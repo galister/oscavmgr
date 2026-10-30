@@ -459,30 +459,89 @@ impl UnifiedTrackingData {
         dirty
     }
 
+    /// Packs the shapes into VRChat's native `/tracking/face/v1` payload:
+    /// one byte per tracking key, decoded by VRC as `byte / 255.0`.
+    pub fn native_face_payload(&self) -> Vec<u8> {
+        use UnifiedExpressions::*;
+
+        let q = |v: f32| (v.clamp(0., 1.) * 255.).round() as u8;
+        let mut payload = vec![0u8; NATIVE_FT_KEYS];
+
+        // signed gaze (+X looks right, +Y looks up), VRC wants one 0..1 key per direction.
+        // prefer the eye tracker's gaze (same as /tracking/eye) over face-tracker eye shapes
+        let (lx, ly, rx, ry) = if let Some(left) = self.eyes[0] {
+            let right = self.eyes[1].unwrap_or(left);
+            let n = |rad: f32| rad.to_degrees() / EYE_LOOK_MAX_DEG;
+            (n(-left.y), n(left.x), n(-right.y), n(right.x))
+        } else {
+            let y = self.getu(EyeY);
+            (self.getu(EyeLeftX), y, self.getu(EyeRightX), y)
+        };
+        payload[0] = q(rx); // EyeLookOutRight
+        payload[1] = q(-rx); // EyeLookInRight
+        payload[2] = q(ry); // EyeLookUpRight
+        payload[3] = q(-ry); // EyeLookDownRight
+        payload[4] = q(-lx); // EyeLookOutLeft
+        payload[5] = q(lx); // EyeLookInLeft
+        payload[6] = q(ly); // EyeLookUpLeft
+        payload[7] = q(-ly); // EyeLookDownLeft
+
+        payload[8] = q(self.getu(EyeClosedRight));
+        payload[9] = q(self.getu(EyeClosedLeft));
+        // 10..=13 EyeDilation / EyeConstrict are not tracked
+
+        // 14..=17 EyeSquintRight..=EyeWideLeft, 18..=97 BrowPinchRight..=TongueTwistLeft
+        for (dst, src) in [(14, EyeSquintRight..=EyeWideLeft), (18, BrowPinchRight..=TongueTwistLeft)] {
+            let src = *src.start() as usize..=*src.end() as usize;
+            for (i, shape) in self.shapes[src].iter().enumerate() {
+                payload[dst + i] = q(*shape);
+            }
+        }
+        // 98..=101 SoftPalateClose, ThroatSwallow, NeckFlex are not tracked
+
+        payload
+    }
+
     pub fn apply_to_bundle(
         &mut self,
         params: &mut [Option<MysteryParam>; NUM_SHAPES],
         bundle: &mut OscBundle,
+        native: bool,
+        legacy: bool,
     ) {
-        if !self.expression_tracking {
-            bundle.send_parameter("ExpressionTrackingActive", OscType::Bool(true));
-            self.expression_tracking = true;
+        if native {
+            bundle.send_tracking(
+                NATIVE_FT_ADDR,
+                vec![OscType::Blob(self.native_face_payload())],
+            );
         }
-        if !self.lip_tracking {
-            bundle.send_parameter("LipTrackingActive", OscType::Bool(true));
-            self.lip_tracking = true;
-        }
-        //bundle.send_parameter("EyeTrackingActive", OscType::Bool(true));
 
-        for (idx, shape) in self.shapes.iter().enumerate() {
-            if let Some(param) = &mut params[idx] {
-                param.send(*shape, bundle);
+        if legacy {
+            if !self.expression_tracking {
+                bundle.send_parameter("ExpressionTrackingActive", OscType::Bool(true));
+                self.expression_tracking = true;
             }
+            if !self.lip_tracking {
+                bundle.send_parameter("LipTrackingActive", OscType::Bool(true));
+                self.lip_tracking = true;
+            }
+            //bundle.send_parameter("EyeTrackingActive", OscType::Bool(true));
+
+            for (idx, shape) in self.shapes.iter().enumerate() {
+                if let Some(param) = &mut params[idx] {
+                    param.send(*shape, bundle);
+                }
+            }
+        } else {
+            // re-announce if we switch back to legacy
+            self.expression_tracking = false;
+            self.lip_tracking = false;
         }
         self.old_shapes = Some(self.shapes);
 
         if let Some(left_euler) = self.eyes[0] {
-            if params[CombinedExpression::EyeLidLeft as usize].is_none() {
+            // with native, eyelids are part of the face payload
+            if !native && params[CombinedExpression::EyeLidLeft as usize].is_none() {
                 // in case avatar doesn't support separate eye closed
                 bundle.send_tracking(
                     "/tracking/eye/EyesClosedAmount",
@@ -505,6 +564,11 @@ impl UnifiedTrackingData {
 }
 
 pub const NUM_SHAPES: usize = UnifiedExpressions::COUNT + CombinedExpression::COUNT;
+
+pub const NATIVE_FT_ADDR: &str = "/tracking/face/v1";
+pub const NATIVE_FT_KEYS: usize = 102;
+/// Gaze angle that maps to a full (1.0) EyeLook key
+const EYE_LOOK_MAX_DEG: f32 = 30.0;
 
 #[allow(unused)]
 #[repr(usize)]
@@ -698,4 +762,68 @@ pub enum CombinedExpression {
     EarLeft,
     EarRight,
     Blush,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // VRChat tracking keys 14..=97, from creators.vrchat.com/avatars/face-tracking/osc/
+    const VRC_KEYS_14_TO_97: [&str; 84] = [
+        "EyeSquintRight", "EyeSquintLeft", "EyeWideRight", "EyeWideLeft",
+        "BrowPinchRight", "BrowPinchLeft", "BrowLowererRight", "BrowLowererLeft",
+        "BrowInnerUpRight", "BrowInnerUpLeft", "BrowOuterUpRight", "BrowOuterUpLeft",
+        "NasalDilationRight", "NasalDilationLeft", "NasalConstrictRight", "NasalConstrictLeft",
+        "CheekSquintRight", "CheekSquintLeft", "CheekPuffRight", "CheekPuffLeft",
+        "CheekSuckRight", "CheekSuckLeft", "JawOpen", "JawRight", "JawLeft", "JawForward",
+        "JawBackward", "JawClench", "JawMandibleRaise", "MouthClosed",
+        "LipSuckUpperRight", "LipSuckUpperLeft", "LipSuckLowerRight", "LipSuckLowerLeft",
+        "LipSuckCornerRight", "LipSuckCornerLeft", "LipFunnelUpperRight", "LipFunnelUpperLeft",
+        "LipFunnelLowerRight", "LipFunnelLowerLeft", "LipPuckerUpperRight", "LipPuckerUpperLeft",
+        "LipPuckerLowerRight", "LipPuckerLowerLeft", "MouthUpperUpRight", "MouthUpperUpLeft",
+        "MouthUpperDeepenRight", "MouthUpperDeepenLeft", "NoseSneerRight", "NoseSneerLeft",
+        "MouthLowerDownRight", "MouthLowerDownLeft", "MouthUpperRight", "MouthUpperLeft",
+        "MouthLowerRight", "MouthLowerLeft", "MouthCornerPullRight", "MouthCornerPullLeft",
+        "MouthCornerSlantRight", "MouthCornerSlantLeft", "MouthFrownRight", "MouthFrownLeft",
+        "MouthStretchRight", "MouthStretchLeft", "MouthDimpleRight", "MouthDimpleLeft",
+        "MouthRaiserUpper", "MouthRaiserLower", "MouthPressRight", "MouthPressLeft",
+        "MouthTightenerRight", "MouthTightenerLeft", "TongueOut", "TongueUp", "TongueDown",
+        "TongueRight", "TongueLeft", "TongueRoll", "TongueBendDown", "TongueCurlUp",
+        "TongueSquish", "TongueFlat", "TongueTwistRight", "TongueTwistLeft",
+    ];
+
+    #[test]
+    fn native_payload_matches_vrc_key_order() {
+        for (i, name) in VRC_KEYS_14_TO_97.iter().enumerate() {
+            let exp: UnifiedExpressions = name.parse().unwrap();
+            let mut data = UnifiedTrackingData::default();
+            data.setu(exp, 1.0);
+            let payload = data.native_face_payload();
+            assert_eq!(payload.len(), NATIVE_FT_KEYS);
+            assert_eq!(payload[14 + i], 255, "{name} should be key {}", 14 + i);
+            assert_eq!(payload.iter().filter(|b| **b != 0).count(), 1, "{name}");
+        }
+    }
+
+    #[test]
+    fn native_payload_splits_gaze() {
+        let mut data = UnifiedTrackingData::default();
+        data.setu(UnifiedExpressions::EyeLeftX, 1.0); // both eyes look right
+        data.setu(UnifiedExpressions::EyeRightX, 1.0);
+        data.setu(UnifiedExpressions::EyeY, -0.5); // and down
+        let p = data.native_face_payload();
+        assert_eq!(&p[0..8], &[255, 0, 0, 128, 0, 255, 0, 128]);
+    }
+
+    #[test]
+    fn native_payload_prefers_eye_tracker_gaze() {
+        let mut data = UnifiedTrackingData::default();
+        data.setu(UnifiedExpressions::EyeLeftX, -1.0); // ignored when eyes are tracked
+        // euler x = up, y = left (sent negated as VRC pitch-down / yaw-right)
+        let gaze = Vec3::new(-15f32.to_radians(), -30f32.to_radians(), 0.);
+        data.eyes = [Some(gaze), None];
+        let p = data.native_face_payload();
+        // looking right 30° and down 15°, on both eyes
+        assert_eq!(&p[0..8], &[255, 0, 0, 128, 0, 255, 0, 128]);
+    }
 }

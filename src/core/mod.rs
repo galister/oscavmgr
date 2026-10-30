@@ -34,6 +34,7 @@ pub mod status;
 
 pub const PARAM_PREFIX: &str = "/avatar/parameters/";
 const AVATAR_PREFIX: &str = "/avatar/change";
+const FULL_FT_ADDR: &str = "/avatar/avatarfullfacetracking";
 const TRACK_PREFIX: &str = "/tracking/trackers/";
 const INPUT_PREFIX: &str = "/input/";
 
@@ -45,6 +46,8 @@ pub struct AppState {
     pub status: status::StatusBar,
     pub self_drive: Arc<AtomicBool>,
     pub delta_t: f32,
+    /// Avatar has Face Tracking with Use All Tracking Keys (from /avatar/avatarfullfacetracking)
+    pub avatar_native_ft: bool,
 }
 
 pub struct AvatarOsc {
@@ -84,7 +87,7 @@ impl AvatarOsc {
         let ext_autopilot = ext_autopilot::ExtAutoPilot::new();
         let ext_storage = ext_storage::ExtStorage::new();
         let ext_gogo = ext_gogo::ExtGogo::new();
-        let ext_tracking = ext_tracking::ExtTracking::new(args.face);
+        let ext_tracking = ext_tracking::ExtTracking::new(args.face, args.ft_mode);
         let ext_oscjson = ext_oscjson::ExtOscJson::new();
         let oscquery = match oscquery::OscQueryAdvert::new(args.osc_port) {
             Ok(advert) => Some(advert),
@@ -133,6 +136,7 @@ impl AvatarOsc {
             },
             self_drive: Arc::new(AtomicBool::new(true)),
             delta_t: 0.011f32,
+            avatar_native_ft: false,
         };
 
         let watchdog = watchdog::Watchdog::new(state.self_drive.clone());
@@ -200,8 +204,17 @@ impl AvatarOsc {
                                 state.tracking.right_hand = transform;
                             }
                         }
+                    } else if packet.addr == FULL_FT_ADDR {
+                        if let [OscType::Bool(supported)] = packet.args[..] {
+                            if supported != state.avatar_native_ft {
+                                info!("Avatar native face tracking: {}", supported);
+                            }
+                            state.avatar_native_ft = supported;
+                        }
                     } else if packet.addr.starts_with(AVATAR_PREFIX) {
                         if let [OscType::String(avatar)] = &packet.args[..] {
+                            // VRC re-sends avatarfullfacetracking after /avatar/change
+                            state.avatar_native_ft = false;
                             self.avatar(AvatarIdentifier::Uid(avatar.clone()), &mut state);
                         }
                     } else {
@@ -217,6 +230,12 @@ impl AvatarOsc {
         let osc_root_node = self.ext_oscjson.avatar(&avatar);
         if let Some(osc_root_node) = osc_root_node.as_ref() {
             self.ext_tracking.osc_json(osc_root_node);
+
+            // VRC only pushes avatarfullfacetracking after /avatar/change, so read it here too
+            if let Some(supported) = osc_root_node.full_face_tracking() {
+                info!("Avatar native face tracking: {}", supported);
+                state.avatar_native_ft = supported;
+            }
         }
 
         let mut bundle = OscBundle::new_bundle();

@@ -46,6 +46,14 @@ oscavmgr babble
 
 Once OscAvMgr is started, it will print further instructions to the terminal.
 
+### VRC-Only: Native face tracking
+
+VRChat avatars set up with the SDK's native Face Tracking ("Use All Tracking Keys") receive face data on `/tracking/face/v1`, synced by VRChat without using your parameter budget.
+
+By default (`--ft-mode auto`) OscAvMgr sends native face tracking when VRChat reports the current avatar supports it, and the usual VRCFT-style avatar parameters otherwise. The status bar shows `NATIVE` or `LEGACY`.
+
+To force a method, use `--ft-mode legacy`, `--ft-mode native` or `--ft-mode both`.
+
 ### VRC-Only: Autopilot
 
 This activates when the avatar bool parameter `AutoPilot` is true. The bottom of the terminal will change from `AP-OFF` to `MANUAL`.
