@@ -1,11 +1,12 @@
 use std::{array, str::FromStr, sync::Arc};
 
+use colored::{Color, Colorize};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rosc::{OscBundle, OscType};
 use sranipal::SRanipalExpression;
 
-use crate::FaceSetup;
+use crate::{FaceSetup, FtMode};
 
 #[cfg(feature = "alvr")]
 use self::alvr::AlvrReceiver;
@@ -43,6 +44,13 @@ trait FaceReceiver {
     fn receive(&mut self, _data: &mut UnifiedTrackingData, _: &mut AppState);
 }
 
+static STA_NATIVE: Lazy<Arc<str>> =
+    Lazy::new(|| format!("{}", "NATIVE".color(Color::Green)).into());
+static STA_LEGACY: Lazy<Arc<str>> =
+    Lazy::new(|| format!("{}", "LEGACY".color(Color::Yellow)).into());
+static STA_BOTH: Lazy<Arc<str>> =
+    Lazy::new(|| format!("{}", "NATIVE+LEGACY".color(Color::Cyan)).into());
+
 struct DummyReceiver;
 
 impl FaceReceiver for DummyReceiver {
@@ -54,10 +62,11 @@ pub struct ExtTracking {
     pub data: UnifiedTrackingData,
     params: [Option<MysteryParam>; NUM_SHAPES],
     receiver: Box<dyn FaceReceiver>,
+    ft_mode: FtMode,
 }
 
 impl ExtTracking {
-    pub fn new(setup: FaceSetup) -> Self {
+    pub fn new(setup: FaceSetup, ft_mode: FtMode) -> Self {
         let default_combined = vec![
             CombinedExpression::BrowExpressionLeft,
             CombinedExpression::BrowExpressionRight,
@@ -128,8 +137,10 @@ impl ExtTracking {
             data: UnifiedTrackingData::default(),
             params,
             receiver,
+            ft_mode,
         };
 
+        log::info!("Face tracking mode: {:?}", ft_mode);
         log::info!("--- Default params ---");
         me.print_params();
 
@@ -158,7 +169,21 @@ impl ExtTracking {
             return;
         }
 
-        self.data.apply_to_bundle(&mut self.params, bundle);
+        let (native, legacy) = match self.ft_mode {
+            FtMode::Auto => (state.avatar_native_ft, !state.avatar_native_ft),
+            FtMode::Legacy => (false, true),
+            FtMode::Native => (true, false),
+            FtMode::Both => (true, true),
+        };
+
+        state.status.add_item(match (native, legacy) {
+            (true, true) => STA_BOTH.clone(),
+            (true, false) => STA_NATIVE.clone(),
+            _ => STA_LEGACY.clone(),
+        });
+
+        self.data
+            .apply_to_bundle(&mut self.params, bundle, native, legacy);
     }
 
     pub fn osc_json(&mut self, avatar_node: &OscJsonNode) {

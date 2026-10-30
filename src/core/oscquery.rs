@@ -532,6 +532,10 @@ static ROOT: Lazy<OscQueryNode> = Lazy::new(|| {
         BTreeMap::from([
             ("change", OscQueryNode::endpoint("/avatar/change", "s")),
             (
+                "avatarfullfacetracking",
+                OscQueryNode::endpoint("/avatar/avatarfullfacetracking", "T"),
+            ),
+            (
                 "parameters",
                 OscQueryNode::endpoint("/avatar/parameters", "b"),
             ),
@@ -594,6 +598,10 @@ mod tests {
         let avatar_change = ROOT.find("/avatar/change").unwrap();
         assert_eq!(avatar_change.access, 2);
         assert_eq!(avatar_change.osc_type, Some("s"));
+
+        let full_ft = ROOT.find("/avatar/avatarfullfacetracking").unwrap();
+        assert_eq!(full_ft.access, 2);
+        assert_eq!(full_ft.osc_type, Some("T"));
 
         let avatar = ROOT.find("/avatar/parameters").unwrap();
         assert_eq!(avatar.access, 2);

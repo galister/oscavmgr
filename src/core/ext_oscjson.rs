@@ -133,6 +133,8 @@ pub struct OscJsonNode {
     pub data_type: Option<Arc<str>>,
     #[serde(alias = "CONTENTS")]
     pub contents: Option<HashMap<Arc<str>, OscJsonNode>>,
+    #[serde(alias = "VALUE")]
+    pub value: Option<serde_json::Value>,
 }
 
 impl OscJsonNode {
@@ -152,6 +154,15 @@ impl OscJsonNode {
         self.get("parameters")
             .and_then(|parameters| parameters.get("VSync"))
             .is_some()
+    }
+
+    /// Whether the avatar has Face Tracking with Use All Tracking Keys, if VRC reported it
+    pub fn full_face_tracking(&self) -> Option<bool> {
+        self.get("avatarfullfacetracking")?
+            .value
+            .as_ref()?
+            .get(0)?
+            .as_bool()
     }
 }
 
