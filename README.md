@@ -114,7 +114,7 @@ To read a value:
 
 ## Using with Resonite
 
-Enable this mod: [galister/EyeTrackVRResonite](https://github.com/galister/EyeTrackVRResonite) (This is a fork that supports both Eye + Face)
+Enable this mod: [Nytra/EyeTrackVRResonite](https://github.com/Nytra/EyeTrackVRResonite) (This is a fork that supports both Eye + Face)
 
 With the mod enabled, simply start OscAvMgr.
 
