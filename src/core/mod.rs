@@ -8,6 +8,7 @@ use rosc::{OscBundle, OscPacket, OscType};
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
+    rc::Rc,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -33,7 +34,9 @@ mod watchdog;
 pub mod status;
 
 pub const PARAM_PREFIX: &str = "/avatar/parameters/";
-const AVATAR_PREFIX: &str = "/avatar/change";
+const AVATAR_NAME_ADDR: &str = "/avatar/name";
+const AVATAR_CHANGE_ADDR: &str = "/avatar/change";
+const AVATAR_FULL_FT_ADDR: &str = "/avatar/avatarfullfacetracking";
 const TRACK_PREFIX: &str = "/tracking/trackers/";
 const INPUT_PREFIX: &str = "/input/";
 
@@ -58,7 +61,7 @@ pub struct AvatarOsc {
     ext_tracking: ext_tracking::ExtTracking,
     _oscquery: Option<oscquery::OscQueryAdvert>,
     multi: MultiProgress,
-    avatar_file: Option<String>,
+    avatar_file: Option<Rc<str>>,
 }
 
 pub struct OscTrack {
@@ -69,7 +72,7 @@ pub struct OscTrack {
 }
 
 impl AvatarOsc {
-    pub fn new(args: Args, multi: MultiProgress) -> AvatarOsc {
+    pub fn new(mut args: Args, multi: MultiProgress) -> AvatarOsc {
         let ip = IpAddr::V4(if args.expose {
             Ipv4Addr::UNSPECIFIED
         } else {
@@ -105,7 +108,7 @@ impl AvatarOsc {
             ext_tracking,
             _oscquery: oscquery,
             multi,
-            avatar_file: args.avatar,
+            avatar_file: args.avatar.take().map(Rc::from),
         }
     }
 
@@ -155,6 +158,7 @@ impl AvatarOsc {
         );
 
         let mut last_frame = Instant::now();
+        let mut pending_avatar_change = PendingAvatarChange::default();
         let mut buf = [0u8; rosc::decoder::MTU];
         loop {
             if let Ok((size, addr)) = listener.recv_from(&mut buf) {
@@ -200,9 +204,23 @@ impl AvatarOsc {
                                 state.tracking.right_hand = transform;
                             }
                         }
-                    } else if packet.addr.starts_with(AVATAR_PREFIX) {
-                        if let [OscType::String(avatar)] = &packet.args[..] {
-                            self.avatar(AvatarIdentifier::Uid(avatar.clone()), &mut state);
+                    } else if packet.addr.starts_with(AVATAR_CHANGE_ADDR) {
+                        if let [OscType::String(uid)] = &packet.args[..] {
+                            if let Some(avatar) = pending_avatar_change.set_uid(uid.as_str()) {
+                                self.avatar(avatar, &mut state);
+                            }
+                        }
+                    } else if packet.addr.starts_with(AVATAR_NAME_ADDR) {
+                        if let [OscType::String(name)] = &packet.args[..] {
+                            if let Some(avatar) = pending_avatar_change.set_name(name.as_str()) {
+                                self.avatar(avatar, &mut state);
+                            }
+                        }
+                    } else if packet.addr.starts_with(AVATAR_FULL_FT_ADDR) {
+                        if let [OscType::Bool(full_ft)] = &packet.args[..] {
+                            if let Some(avatar) = pending_avatar_change.set_full_ft(*full_ft) {
+                                self.avatar(avatar, &mut state);
+                            }
                         }
                     } else {
                         log::info!("Received data: {:?}", packet);
@@ -213,10 +231,17 @@ impl AvatarOsc {
     }
 
     fn avatar(&mut self, avatar: AvatarIdentifier, state: &mut AppState) {
-        info!("Avatar changed: {:?}", avatar);
+        info!("Avatar changed: {avatar}");
         let osc_root_node = self.ext_oscjson.avatar(&avatar);
-        if let Some(osc_root_node) = osc_root_node.as_ref() {
-            self.ext_tracking.osc_json(osc_root_node);
+
+        if matches!(avatar, AvatarIdentifier::Osc { full_ft: true, .. }) {
+            self.ext_tracking.vrc_face_v1_params();
+        } else {
+            if let Some(osc_root_node) = osc_root_node.as_ref() {
+                self.ext_tracking.params_from_osc_json(osc_root_node);
+            } else {
+                log::warn!("Avatar uses legacy parameters, but could not retrieve those params via OSCJSON.")
+            }
         }
 
         let mut bundle = OscBundle::new_bundle();
@@ -307,6 +332,55 @@ impl AvatarOsc {
         }
 
         state.status.display();
+    }
+}
+
+#[derive(Default)]
+struct PendingAvatarChange {
+    uid: Option<Rc<str>>,
+    name: Option<Rc<str>>,
+    full_ft: Option<bool>,
+}
+
+impl PendingAvatarChange {
+    fn try_finalize(&mut self) -> Option<AvatarIdentifier> {
+        if let (Some(uid), Some(name), Some(full_ft)) =
+            (self.uid.as_ref(), self.name.as_ref(), self.full_ft.as_ref())
+        {
+            let retval = AvatarIdentifier::Osc {
+                uid: uid.clone(),
+                name: name.clone(),
+                full_ft: *full_ft,
+            };
+            *self = Self::default();
+            Some(retval)
+        } else {
+            None
+        }
+    }
+    fn set_uid(&mut self, uid: &str) -> Option<AvatarIdentifier> {
+        if self.uid.is_some() {
+            // interrupted change? reset
+            *self = Self::default();
+        }
+        self.uid = Some(uid.into());
+        self.try_finalize()
+    }
+    fn set_name(&mut self, name: &str) -> Option<AvatarIdentifier> {
+        if self.name.is_some() {
+            // interrupted change? reset
+            *self = Self::default();
+        }
+        self.name = Some(name.into());
+        self.try_finalize()
+    }
+    fn set_full_ft(&mut self, full_ft: bool) -> Option<AvatarIdentifier> {
+        if self.full_ft.is_some() {
+            // interrupted change? reset
+            *self = Self::default();
+        }
+        self.full_ft = Some(full_ft);
+        self.try_finalize()
     }
 }
 

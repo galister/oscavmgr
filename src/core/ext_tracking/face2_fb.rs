@@ -1,4 +1,4 @@
-use super::unified::{UnifiedExpressions, UnifiedShapeAccessors, UnifiedShapes, NUM_SHAPES};
+use super::unified::{UnifiedExpressions, UnifiedShapeAccessors, UnifiedShapes, NUM_ALL_SHAPES};
 
 #[allow(non_snake_case, unused)]
 #[repr(usize)]
@@ -83,7 +83,7 @@ enum Face2Fb {
 }
 
 pub(crate) fn face2_fb_to_unified(face_fb: &[f32]) -> Option<UnifiedShapes> {
-    let mut shapes: UnifiedShapes = [0.0; NUM_SHAPES];
+    let mut shapes: UnifiedShapes = [0.0; NUM_ALL_SHAPES];
     if face_fb.len() < FaceFb::Max as usize {
         log::warn!(
             "Face tracking data is too short: {} < {}",

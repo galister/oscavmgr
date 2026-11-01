@@ -70,5 +70,5 @@ pub struct Args {
 
     /// The OSC-JSON avatar file to use. See ~/.config/oscavmgr-avatar.json
     #[arg(long)]
-    avatar: Option<String>,
+    avatar: Option<Box<str>>,
 }

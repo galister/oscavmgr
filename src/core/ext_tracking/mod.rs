@@ -16,15 +16,15 @@ use self::babble::BabbleEtvrReceiver;
 #[cfg(feature = "openxr")]
 use self::openxr::OpenXrReceiver;
 
-use self::unified::{CombinedExpression, UnifiedExpressions, UnifiedTrackingData, NUM_SHAPES};
+use self::unified::{CombinedExpression, UnifiedExpressions, UnifiedTrackingData, NUM_ALL_SHAPES};
 
 use super::{
     ext_oscjson::{MysteryParam, OscJsonNode},
     AppState,
 };
 
-use strum::EnumCount;
 use strum::IntoEnumIterator;
+use strum::{EnumCount, EnumIs};
 
 #[cfg(feature = "alvr")]
 mod alvr;
@@ -50,9 +50,17 @@ impl FaceReceiver for DummyReceiver {
     fn receive(&mut self, _data: &mut UnifiedTrackingData, _: &mut AppState) {}
 }
 
+#[derive(EnumIs)]
+pub(super) enum FtParams {
+    /// VRC native face tracking (/tracking/face/v1)
+    VrcFaceV1,
+    /// Parameter-based OSC face tracking
+    ParamBased(Box<[Option<MysteryParam>; NUM_ALL_SHAPES]>),
+}
+
 pub struct ExtTracking {
     pub data: UnifiedTrackingData,
-    params: [Option<MysteryParam>; NUM_SHAPES],
+    params: FtParams,
     receiver: Box<dyn FaceReceiver>,
 }
 
@@ -84,7 +92,7 @@ impl ExtTracking {
             UnifiedExpressions::MouthClosed,
         ];
 
-        let mut params = array::from_fn(|_| None);
+        let mut params = Box::new(array::from_fn(|_| None));
 
         for e in default_combined.into_iter() {
             let name: &str = e.into();
@@ -126,7 +134,7 @@ impl ExtTracking {
 
         let mut me = Self {
             data: UnifiedTrackingData::default(),
-            params,
+            params: FtParams::ParamBased(params),
             receiver,
         };
 
@@ -150,7 +158,9 @@ impl ExtTracking {
             log::debug!("Freeze");
         } else {
             self.receiver.receive(&mut self.data, state);
-            self.data.calc_combined(state);
+            if self.params.is_param_based() {
+                self.data.calc_combined(state);
+            }
         }
 
         if matches!(state.params.get("FacePause"), Some(OscType::Bool(true))) {
@@ -161,16 +171,21 @@ impl ExtTracking {
         self.data.apply_to_bundle(&mut self.params, bundle);
     }
 
-    pub fn osc_json(&mut self, avatar_node: &OscJsonNode) {
-        self.params.iter_mut().for_each(|p| *p = None);
+    pub fn vrc_face_v1_params(&mut self) {
+        self.params = FtParams::VrcFaceV1;
+    }
 
+    pub fn params_from_osc_json(&mut self, avatar_node: &OscJsonNode) {
+        let mut params = Box::new(array::from_fn(|_| None));
         let Some(parameters) = avatar_node.get("parameters") else {
             log::warn!("oscjson: Could not read /avatar/parameters");
             return;
         };
 
-        self.process_node_recursive("parameters", parameters);
+        self.process_node_recursive(&mut params, "parameters", parameters);
         self.print_params();
+
+        self.params = FtParams::ParamBased(params);
     }
 
     fn should_ignore_path(&self, node: &OscJsonNode) -> bool {
@@ -184,7 +199,12 @@ impl ExtTracking {
         false
     }
 
-    fn process_node_recursive(&mut self, name: &str, node: &OscJsonNode) -> Option<()> {
+    fn process_node_recursive(
+        &mut self,
+        params: &mut [Option<MysteryParam>; NUM_ALL_SHAPES],
+        name: &str,
+        node: &OscJsonNode,
+    ) -> Option<()> {
         static FT_PARAMS_REGEX: Lazy<Regex> =
             Lazy::new(|| Regex::new(r"^(.+?)(Negative|\d+)?$").unwrap());
 
@@ -195,7 +215,7 @@ impl ExtTracking {
         if let Some(contents) = node.contents.as_ref() {
             log::debug!("Checking {}", name);
             for (name, node) in contents.iter() {
-                let _ = self.process_node_recursive(name, node);
+                let _ = self.process_node_recursive(params, name, node);
             }
             return None;
         }
@@ -222,7 +242,7 @@ impl ExtTracking {
                     .unwrap()
             );
 
-            let create = self.params[idx].is_none();
+            let create = params[idx].is_none();
 
             if create {
                 let new = MysteryParam {
@@ -234,10 +254,10 @@ impl ExtTracking {
                     last_value: 0.,
                     last_bits: [false; 8],
                 };
-                self.params[idx] = Some(new);
+                params[idx] = Some(new);
             };
 
-            let stored = self.params[idx].as_mut().unwrap();
+            let stored = params[idx].as_mut().unwrap();
             match m.get(2).map(|s| s.as_str()) {
                 Some("Negative") => {
                     let addr = &node.full_path.as_ref()[super::PARAM_PREFIX.len()..];
@@ -260,23 +280,28 @@ impl ExtTracking {
     }
 
     fn print_params(&self) {
-        for v in self.params.iter().filter_map(|p| p.as_ref()) {
-            let mut elems = vec![];
+        match &self.params {
+            FtParams::VrcFaceV1 => log::info!("Using VRC native UnifiedExpressions set."),
+            FtParams::ParamBased(params) => {
+                for v in params.iter().filter_map(|p| p.as_ref()) {
+                    let mut elems = vec![];
 
-            if v.main_address.is_some() {
-                elems.push("float".into())
+                    if v.main_address.is_some() {
+                        elems.push("float".into())
+                    }
+                    if v.num_bits > 0 {
+                        elems.push(if v.num_bits > 1 {
+                            format!("{} bit", v.num_bits)
+                        } else {
+                            format!("{} bits", v.num_bits)
+                        });
+                    }
+                    if v.neg_address.is_some() {
+                        elems.push("neg".into());
+                    }
+                    log::info!("{}: {}", v.name, elems.join(" + "))
+                }
             }
-            if v.num_bits > 0 {
-                elems.push(if v.num_bits > 1 {
-                    format!("{} bit", v.num_bits)
-                } else {
-                    format!("{} bits", v.num_bits)
-                });
-            }
-            if v.neg_address.is_some() {
-                elems.push("neg".into());
-            }
-            log::info!("{}: {}", v.name, elems.join(" + "))
         }
     }
 }

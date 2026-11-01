@@ -25,7 +25,7 @@ use crate::core::{
 };
 
 use super::{
-    unified::{UnifiedExpressions, UnifiedTrackingData, NUM_SHAPES},
+    unified::{UnifiedExpressions, UnifiedTrackingData, NUM_ALL_SHAPES},
     FaceReceiver,
 };
 
@@ -37,7 +37,7 @@ struct AlvrTrackingData {
     eye: [Option<Vec3>; 2],
     head: Option<Pose>,
     hands: [Option<Pose>; 2],
-    shapes: Option<[f32; NUM_SHAPES]>,
+    shapes: Option<[f32; NUM_ALL_SHAPES]>,
 }
 
 impl AlvrTrackingData {}

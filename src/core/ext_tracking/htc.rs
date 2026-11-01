@@ -1,4 +1,4 @@
-use super::unified::{UnifiedExpressions, UnifiedShapeAccessors, UnifiedShapes, NUM_SHAPES};
+use super::unified::{UnifiedExpressions, UnifiedShapeAccessors, UnifiedShapes, NUM_ALL_SHAPES};
 use openxr as xr;
 
 pub(crate) struct HtcFacialData {
@@ -23,7 +23,7 @@ impl HtcFacialData {
 }
 
 pub(crate) fn htc_to_unified(d: &HtcFacialData) -> UnifiedShapes {
-    let mut shapes: UnifiedShapes = [0.0; NUM_SHAPES];
+    let mut shapes: UnifiedShapes = [0.0; NUM_ALL_SHAPES];
 
     shapes.setu(
         UnifiedExpressions::EyeRightX,

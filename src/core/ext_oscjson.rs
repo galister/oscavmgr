@@ -4,8 +4,10 @@ use rosc::{OscBundle, OscType};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    fmt::Display,
     fs::File,
     io::{Read, Write},
+    rc::Rc,
     sync::Arc,
     thread,
     time::Duration,
@@ -75,7 +77,8 @@ impl ExtOscJson {
         let mut json = String::new();
 
         if let AvatarIdentifier::Path(path) = avatar {
-            if let Err(e) = File::open(path).and_then(|mut f| f.read_to_string(&mut json)) {
+            if let Err(e) = File::open(path.as_ref()).and_then(|mut f| f.read_to_string(&mut json))
+            {
                 log::error!("Could not read file: {:?}", e);
                 return None;
             }
@@ -119,8 +122,28 @@ impl ExtOscJson {
 #[derive(Debug)]
 pub enum AvatarIdentifier {
     Default,
-    Uid(String),
-    Path(String),
+    Osc {
+        uid: Rc<str>,
+        name: Rc<str>,
+        full_ft: bool,
+    },
+    Path(Rc<str>),
+}
+
+impl Display for AvatarIdentifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Default => write!(f, "Default Avatar"),
+            Self::Osc { uid, name, full_ft } => write!(
+                f,
+                "{} ({}) - {}",
+                name.as_ref(),
+                uid.as_ref(),
+                if *full_ft { "Native FT" } else { "Legacy FT" }
+            ),
+            Self::Path(path) => write!(f, "Avatar from file: {}", path.as_ref()),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -133,6 +156,8 @@ pub struct OscJsonNode {
     pub data_type: Option<Arc<str>>,
     #[serde(alias = "CONTENTS")]
     pub contents: Option<HashMap<Arc<str>, OscJsonNode>>,
+    #[serde(alias = "VALUE")]
+    pub value: Option<Vec<serde_json::Value>>,
 }
 
 impl OscJsonNode {
