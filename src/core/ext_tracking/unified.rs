@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use glam::{Quat, Vec3};
 use rosc::{OscBundle, OscType};
 use strum::{EnumCount, EnumIter, EnumString, IntoStaticStr};
@@ -459,6 +461,33 @@ impl UnifiedTrackingData {
         dirty
     }
 
+    fn update_eye_look_shapes(&mut self) {
+        const MAX_EYE_DEFLECTION_RAD: f32 = PI / 6.0; // 30deg
+
+        let (lx, ly, rx, ry) = if let Some(left) = self.eyes[0] {
+            let right = self.eyes[1].unwrap_or(left);
+            let n = |rad: f32| rad / MAX_EYE_DEFLECTION_RAD;
+            (n(-left.y), n(left.x), n(-right.y), n(right.x))
+        } else {
+            let y = self.getu(UnifiedExpressions::EyeY);
+            (
+                self.getu(UnifiedExpressions::EyeLeftX),
+                y,
+                self.getu(UnifiedExpressions::EyeRightX),
+                y,
+            )
+        };
+
+        self.setu(UnifiedExpressions::EyeLookOutRight, rx);
+        self.setu(UnifiedExpressions::EyeLookInRight, -rx);
+        self.setu(UnifiedExpressions::EyeLookUpRight, ry);
+        self.setu(UnifiedExpressions::EyeLookDownRight, -ry);
+        self.setu(UnifiedExpressions::EyeLookOutLeft, -lx);
+        self.setu(UnifiedExpressions::EyeLookInLeft, lx);
+        self.setu(UnifiedExpressions::EyeLookUpLeft, ly);
+        self.setu(UnifiedExpressions::EyeLookDownLeft, -ly);
+    }
+
     pub(super) fn apply_to_bundle(&mut self, params: &mut FtParams, bundle: &mut OscBundle) {
         if !self.expression_tracking {
             bundle.send_parameter("ExpressionTrackingActive", OscType::Bool(true));
@@ -468,6 +497,8 @@ impl UnifiedTrackingData {
             bundle.send_parameter("LipTrackingActive", OscType::Bool(true));
             self.lip_tracking = true;
         }
+
+        self.update_eye_look_shapes();
 
         let mut simple_blink = false;
 
