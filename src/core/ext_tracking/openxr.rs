@@ -98,6 +98,7 @@ pub(super) struct XrState {
     face_tracker_fb: Option<xr::FaceTrackerFB>,
     eye_tracker_htc: Option<xr::FacialTrackerHTC>,
     lip_tracker_htc: Option<xr::FacialTrackerHTC>,
+    face_tracker_android: Option<xr::FaceTrackerANDROID>,
 
     eyes_closed_frames: u32,
 }
@@ -163,6 +164,7 @@ impl XrState {
             face_tracker_fb: None,
             eye_tracker_htc: None,
             lip_tracker_htc: None,
+            face_tracker_android: None,
             stage_space,
             view_space,
             eye_space,
@@ -220,6 +222,23 @@ impl XrState {
                     .ok();
             } else {
                 log::info!("HTC_facial_tracking (lip): not supported");
+            }
+        }
+
+        if let Ok(android_supported) = me
+            .instance
+            .supports_face_tracking_android(me.system)
+            .inspect_err(|e| log::info!("Android_face_tracking: {e}"))
+        {
+            if android_supported {
+                me.face_tracker_android = me
+                    .session
+                    .create_face_tracker_android()
+                    .inspect(|_| log::info!("Using Android_face_tracking for face."))
+                    .inspect_err(|e| log::info!("Android_face_tracking: {e}"))
+                    .ok();
+            } else {
+                log::info!("Android_face_tracking: visual face tracking not supported");
             }
         }
 
@@ -329,6 +348,20 @@ impl XrState {
 
             if let Some(expression) = expression {
                 if let Some(shapes) = super::face2_fb::face2_fb_to_unified(&expression.weights) {
+                    data.shapes[..=UnifiedExpressions::COUNT]
+                        .copy_from_slice(&shapes[..=UnifiedExpressions::COUNT]);
+                }
+                state.status.add_item(STA_FACE.clone());
+            } else {
+                state.status.add_item(STA_FACE_OFF.clone());
+            }
+        };
+
+        if let Some(face_tracker) = self.face_tracker_android.as_ref() {
+            let expression = face_tracker.get_state(next_frame)?;
+
+            if let Some(expression) = expression {
+                if let Some(shapes) = super::face2_fb::face2_fb_to_unified(&expression.parameters) {
                     data.shapes[..=UnifiedExpressions::COUNT]
                         .copy_from_slice(&shapes[..=UnifiedExpressions::COUNT]);
                 }
