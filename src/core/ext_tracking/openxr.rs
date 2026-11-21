@@ -238,7 +238,7 @@ impl XrState {
                     .inspect_err(|e| log::info!("Android_face_tracking: {e}"))
                     .ok();
             } else {
-                log::info!("Android_face_tracking: visual face tracking not supported");
+                log::info!("Android_face_tracking: face tracking not supported");
             }
         }
 
