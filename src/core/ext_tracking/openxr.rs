@@ -361,7 +361,7 @@ impl XrState {
             let expression = face_tracker.get_state(next_frame)?;
 
             if let Some(expression) = expression {
-                if let Some(shapes) = super::face2_fb::face2_fb_to_unified(&expression.parameters) {
+                if let Some(shapes) = super::android::android_to_unified(&expression.parameters) {
                     data.shapes[..=UnifiedExpressions::COUNT]
                         .copy_from_slice(&shapes[..=UnifiedExpressions::COUNT]);
                 }
