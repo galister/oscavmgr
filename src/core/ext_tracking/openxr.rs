@@ -343,6 +343,8 @@ impl XrState {
             state.status.add_item(STA_GAZE_OFF.clone());
         }
 
+        let mut face_enabled: bool = false;
+
         if let Some(face_tracker) = self.face_tracker_fb.as_ref() {
             let expression = face_tracker.get_expression_weights(next_frame)?;
 
@@ -351,9 +353,7 @@ impl XrState {
                     data.shapes[..=UnifiedExpressions::COUNT]
                         .copy_from_slice(&shapes[..=UnifiedExpressions::COUNT]);
                 }
-                state.status.add_item(STA_FACE.clone());
-            } else {
-                state.status.add_item(STA_FACE_OFF.clone());
+                face_enabled = true;
             }
         };
 
@@ -365,9 +365,7 @@ impl XrState {
                     data.shapes[..=UnifiedExpressions::COUNT]
                         .copy_from_slice(&shapes[..=UnifiedExpressions::COUNT]);
                 }
-                state.status.add_item(STA_FACE.clone());
-            } else {
-                state.status.add_item(STA_FACE_OFF.clone());
+                face_enabled = true;
             }
         };
 
@@ -390,10 +388,14 @@ impl XrState {
                 });
                 data.shapes[..=UnifiedExpressions::COUNT]
                     .copy_from_slice(&shapes[..=UnifiedExpressions::COUNT]);
-                state.status.add_item(STA_FACE.clone());
-            } else {
-                state.status.add_item(STA_FACE_OFF.clone());
+                face_enabled = true;
             }
+        }
+
+        if (face_enabled) {
+            state.status.add_item(STA_FACE.clone());
+        } else {
+            state.status.add_item(STA_FACE_OFF.clone());
         }
 
         Ok(())
