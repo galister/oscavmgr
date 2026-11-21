@@ -397,6 +397,10 @@ fn xr_init() -> anyhow::Result<(xr::Instance, xr::SystemId)> {
         enabled_extensions.htc_facial_tracking = true;
     }
 
+    if available_extensions.android_face_tracking {
+        enabled_extensions.android_face_tracking = true;
+    }
+
     let Ok(instance) = entry.create_instance(
         &xr::ApplicationInfo {
             api_version: xr::Version::new(1, 0, 0),
