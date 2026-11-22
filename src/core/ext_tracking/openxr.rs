@@ -98,6 +98,7 @@ pub(super) struct XrState {
     face_tracker_fb: Option<xr::FaceTrackerFB>,
     eye_tracker_htc: Option<xr::FacialTrackerHTC>,
     lip_tracker_htc: Option<xr::FacialTrackerHTC>,
+    face_tracker_android: Option<xr::FaceTrackerANDROID>,
 
     eyes_closed_frames: u32,
 }
@@ -163,6 +164,7 @@ impl XrState {
             face_tracker_fb: None,
             eye_tracker_htc: None,
             lip_tracker_htc: None,
+            face_tracker_android: None,
             stage_space,
             view_space,
             eye_space,
@@ -220,6 +222,23 @@ impl XrState {
                     .ok();
             } else {
                 log::info!("HTC_facial_tracking (lip): not supported");
+            }
+        }
+
+        if let Ok(android_supported) = me
+            .instance
+            .supports_face_tracking_android(me.system)
+            .inspect_err(|e| log::info!("Android_face_tracking: {e}"))
+        {
+            if android_supported {
+                me.face_tracker_android = me
+                    .session
+                    .create_face_tracker_android()
+                    .inspect(|_| log::info!("Using Android_face_tracking for face."))
+                    .inspect_err(|e| log::info!("Android_face_tracking: {e}"))
+                    .ok();
+            } else {
+                log::info!("Android_face_tracking: face tracking not supported");
             }
         }
 
@@ -324,6 +343,8 @@ impl XrState {
             state.status.add_item(STA_GAZE_OFF.clone());
         }
 
+        let mut face_enabled: bool = false;
+
         if let Some(face_tracker) = self.face_tracker_fb.as_ref() {
             let expression = face_tracker.get_expression_weights(next_frame)?;
 
@@ -332,9 +353,19 @@ impl XrState {
                     data.shapes[..=UnifiedExpressions::COUNT]
                         .copy_from_slice(&shapes[..=UnifiedExpressions::COUNT]);
                 }
-                state.status.add_item(STA_FACE.clone());
-            } else {
-                state.status.add_item(STA_FACE_OFF.clone());
+                face_enabled = true;
+            }
+        };
+
+        if let Some(face_tracker) = self.face_tracker_android.as_ref() {
+            let expression = face_tracker.get_state(next_frame)?;
+
+            if let Some(expression) = expression {
+                if let Some(shapes) = super::android::android_to_unified(&expression.parameters) {
+                    data.shapes[..=UnifiedExpressions::COUNT]
+                        .copy_from_slice(&shapes[..=UnifiedExpressions::COUNT]);
+                }
+                face_enabled = true;
             }
         };
 
@@ -357,10 +388,14 @@ impl XrState {
                 });
                 data.shapes[..=UnifiedExpressions::COUNT]
                     .copy_from_slice(&shapes[..=UnifiedExpressions::COUNT]);
-                state.status.add_item(STA_FACE.clone());
-            } else {
-                state.status.add_item(STA_FACE_OFF.clone());
+                face_enabled = true;
             }
+        }
+
+        if (face_enabled) {
+            state.status.add_item(STA_FACE.clone());
+        } else {
+            state.status.add_item(STA_FACE_OFF.clone());
         }
 
         Ok(())
@@ -395,6 +430,10 @@ fn xr_init() -> anyhow::Result<(xr::Instance, xr::SystemId)> {
 
     if available_extensions.htc_facial_tracking {
         enabled_extensions.htc_facial_tracking = true;
+    }
+
+    if available_extensions.android_face_tracking {
+        enabled_extensions.android_face_tracking = true;
     }
 
     let Ok(instance) = entry.create_instance(
